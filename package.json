@@ -1,0 +1,54 @@
+{
+  "name": "emdms-cbt-system",
+  "version": "1.0.0",
+  "description": "Offline LAN-Based Computer-Based Test (CBT) Examination System with live invigilation, WebRTC webcam monitoring, and anti-cheating controls. Runs entirely on a local network with no internet or cloud dependency.",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "electron:dev": "electron .",
+    "dist": "electron-builder --windows nsis",
+    "postinstall": "node scripts/copy-face-api.js"
+  },
+  "license": "MIT",
+  "author": "EMDMS",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.3.0",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.5.6",
+    "csv-stringify": "^6.5.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "face-api.js": "^0.22.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "pdfkit": "^0.15.0",
+    "selfsigned": "^1.10.14",
+    "socket.io": "^4.7.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^25.0.0",
+    "electron-builder": "^24.0.0",
+    "electron-rebuild": "^3.2.9"
+  },
+  "build": {
+    "appId": "org.emdms.cbt",
+    "files": [
+      "**/*",
+      "!node_modules/**/.cache/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  }
+}

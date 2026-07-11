@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Student Dashboard — EMDMS</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+<link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="mark"><i class="fa-solid fa-graduation-cap"></i></div><div><h1>EMDMS</h1></div></div>
+      <nav>
+        <a href="#profile" data-route="profile"><i class="fa-solid fa-user"></i> My Profile</a>
+        <a href="#exams" data-route="exams"><i class="fa-solid fa-clipboard-list"></i> Available Exams</a>
+        <a href="#results" data-route="results"><i class="fa-solid fa-chart-simple"></i> My Results</a>
+      </nav>
+      <div class="user-box">
+        <b id="student-name">Student</b>
+        <span id="student-reg"></span>
+        <button class="btn btn-outline btn-sm btn-block" id="logout-btn"><i class="fa-solid fa-right-from-bracket"></i> Log out</button>
+      </div>
+    </aside>
+    <div class="main-area">
+      <div class="topbar">
+        <h2 id="page-title">My Profile</h2>
+        <div class="topbar-search"><i class="fa-solid fa-magnifying-glass"></i><span>Search exams…</span></div>
+        <div class="topbar-actions">
+          <div class="icon-btn"><i class="fa-regular fa-bell"></i><span class="dot"></span></div>
+          <div class="topbar-user">
+            <img id="topbar-avatar" alt="Avatar" />
+            <div class="who"><b id="topbar-name">Student</b><span id="topbar-role">Student</span></div>
+          </div>
+          <button class="btn btn-outline btn-sm" id="topbar-logout-btn">Log out</button>
+        </div>
+      </div>
+      <div class="content" id="content"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/student-dashboard.js"></script>
+</body>
+</html>

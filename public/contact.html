@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Contact — EMDMS</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+<link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body class="site-body">
+  <div id="site-navbar-root"></div>
+
+  <div class="content-page" style="max-width:1000px;">
+    <div class="masthead-tag" style="text-align:left;">Register Entry &mdash; Contact</div>
+    <h1>Contact &amp; Support</h1>
+    <p class="lead">Having trouble with the exam portal, or need help setting up EMDMS for your department? Reach out below.</p>
+
+    <div class="contact-grid">
+      <div>
+        <div class="contact-card">
+          <b>Exam-Day Technical Support</b>
+          <span>During an exam, contact the invigilator or exam officer in your hall directly — they can assist immediately or escalate to the system administrator.</span>
+        </div>
+        <div class="contact-card">
+          <b>System Administrator</b>
+          <span id="admin-email-line">Update this contact card with your institution's exam-office email and phone number before deployment.</span>
+        </div>
+        <div class="contact-card">
+          <b>Server Address</b>
+          <span>Ask your invigilator for the local network address (e.g. <code>https://192.168.x.x:3000</code>) if the portal doesn't load — it changes depending on which network you're connected to.</span>
+        </div>
+      </div>
+
+      <div>
+        <form id="contact-form" class="section">
+          <h3 style="margin-bottom:14px;">Send an Inquiry</h3>
+          <div class="field"><label for="name">Full Name</label><input id="name" required /></div>
+          <div class="field"><label for="email">Email</label><input id="email" type="email" required /></div>
+          <div class="field"><label for="subject">Subject</label><input id="subject" required /></div>
+          <div class="field"><label for="message">Message</label><textarea id="message" rows="5" required></textarea></div>
+          <button class="btn btn-primary btn-block" type="submit">Send via Email</button>
+          <p style="font-size:12px;margin-top:10px;color:var(--ink-faint);">This opens your email app with the message pre-filled — EMDMS runs offline and doesn't send messages directly. Update the recipient address in this page before deployment.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="site-footer-root"></div>
+  <script src="/js/site-chrome.js"></script>
+  <script>
+    EmdmsSiteChrome.mount('contact');
+    const RECIPIENT_EMAIL = 'examoffice@example.edu'; // change to your institution's support email
+    document.getElementById('contact-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('name').value;
+      const email = document.getElementById('email').value;
+      const subject = document.getElementById('subject').value;
+      const message = document.getElementById('message').value;
+      const body = `From: ${name} (${email})\n\n${message}`;
+      window.location.href = `mailto:${RECIPIENT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    });
+  </script>
+</body>
+</html>

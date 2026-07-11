@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Dashboard — EMDMS</title>
+<link rel="stylesheet" href="/css/styles.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="mark"><i class="fa-solid fa-shield-halved"></i></div><div><h1>EMDMS</h1></div></div>
+      <nav id="nav">
+        <a href="#overview" data-route="overview"><i class="fa-solid fa-gauge-high"></i> Overview</a>
+        <a href="#academic" data-route="academic"><i class="fa-solid fa-graduation-cap"></i> Academic Structure</a>
+        <a href="#students" data-route="students"><i class="fa-solid fa-user-graduate"></i> Students</a>
+        <a href="#invigilators" data-route="invigilators"><i class="fa-solid fa-user-shield"></i> Invigilators</a>
+        <a href="#exams" data-route="exams"><i class="fa-solid fa-file-pen"></i> Examinations</a>
+        <a href="#recordings" data-route="recordings"><i class="fa-solid fa-video"></i> Recordings</a>
+        <a href="#incidents" data-route="incidents"><i class="fa-solid fa-triangle-exclamation"></i> Incident Reports</a>
+        <a href="#results" data-route="results"><i class="fa-solid fa-chart-simple"></i> Results</a>
+        <a href="#backup" data-route="backup"><i class="fa-solid fa-database"></i> Backup &amp; Restore</a>
+      </nav>
+      <div class="user-box">
+        <b id="admin-name">Administrator</b>
+        <span id="admin-role">System Administrator</span>
+        <button class="btn btn-outline btn-sm btn-block" id="logout-btn"><i class="fa-solid fa-arrow-right-from-bracket"></i> Log out</button>
+      </div>
+    </aside>
+    <div class="main-area">
+      <div class="topbar">
+        <h2 id="page-title">Overview</h2>
+        <button class="btn btn-outline btn-sm" id="topbar-logout-btn">Log out</button>
+      </div>
+      <div class="content" id="content"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

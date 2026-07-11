@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>About — EMDMS</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+<link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body class="site-body">
+  <div id="site-navbar-root"></div>
+
+  <div class="content-page">
+    <div class="masthead-tag" style="text-align:left;">Register Entry &mdash; About</div>
+    <h1>About EMDMS</h1>
+    <p class="lead">Examination Malpractice Detection &amp; Management System — a Computer-Based Test platform built to run entirely on a local network, purpose-built for institutions like ours.</p>
+
+    <h2>Why this exists</h2>
+    <p>Paper-based examinations are slow to grade, easy to leak, and hard to supervise at scale. Cloud-based CBT platforms solve some of that, but depend on internet connectivity that many exam halls simply don't have — or shouldn't rely on for something as sensitive as an examination. EMDMS was built to close that gap: a full computer-based testing system that runs entirely on a local server in the exam hall, with no internet connection required at any point during the exam.</p>
+
+    <h2>What it does</h2>
+    <p>EMDMS gives administrators a complete toolkit to manage the academic structure, register students and invigilators, build or import exam questions, and publish exams on a schedule. Students take exams through a guided, timed interface with autosave built in. Invigilators get a live view of every student's webcam feed alongside real-time progress, with the ability to warn, lock, or end a student's session directly from the dashboard. Every webcam feed is also recorded automatically, so nothing is missed even if it wasn't caught in the moment.</p>
+
+    <h2>Built for the exam hall</h2>
+    <p>Every design decision in EMDMS starts from the same constraint: it has to work reliably in a room full of students on a local network, without depending on anything outside that room. That means no cloud storage, no third-party APIs, and careful attention to keeping the server lightweight even when dozens of students are connected and recording at once.</p>
+
+    <h2>Get in touch</h2>
+    <p>Questions about deploying EMDMS for your own department or institution? Visit the <a href="/contact.html" style="color:var(--biro);font-weight:600;">Contact page</a> for details.</p>
+  </div>
+
+  <div id="site-footer-root"></div>
+  <script src="/js/site-chrome.js"></script>
+  <script>EmdmsSiteChrome.mount('about');</script>
+</body>
+</html>

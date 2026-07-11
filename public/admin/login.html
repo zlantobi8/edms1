@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Administrator Login — EMDMS</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+<link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="auth-split">
+    <div class="auth-left">
+      <div class="auth-form-wrap">
+        <div class="brand">
+          <div class="mark"><i class="fa-solid fa-shield-halved"></i></div>
+          <div><h1>EMDMS</h1><span>Administrator Control Panel</span></div>
+        </div>
+        <h1>Login to your account</h1>
+        <p class="auth-sub">Sign in with your administrator credentials to continue.</p>
+        <div id="error-box"></div>
+        <form id="login-form">
+          <div class="field">
+            <label for="username">Username</label>
+            <div class="input-icon">
+              <i class="fa-solid fa-user-shield"></i>
+              <input id="username" name="username" placeholder="Administrator username" autocomplete="username" required />
+            </div>
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <div class="input-icon">
+              <i class="fa-solid fa-lock"></i>
+              <input id="password" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+              <i class="fa-solid fa-eye toggle-pass" id="toggle-pass"></i>
+            </div>
+          </div>
+          <div class="auth-row"><a class="forgot-link" href="#">Forgot password?</a></div>
+          <button class="btn btn-primary btn-block" type="submit">Log in</button>
+        </form>
+        <a class="back-link" href="/"><i class="fa-solid fa-arrow-left" style="margin-right:6px;"></i>Back to portal selection</a>
+      </div>
+    </div>
+    <div class="auth-right">
+      <div class="dots"></div>
+      <div class="blob blob1"></div>
+      <div class="blob blob2"></div>
+      <svg viewBox="0 0 420 420" xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="210" cy="368" rx="140" ry="16" fill="rgba(0,0,0,0.12)"/>
+        <rect x="70" y="150" width="220" height="150" rx="16" fill="#FFFFFF" opacity=".95"/>
+        <circle cx="112" cy="188" r="14" fill="#6C5DD3"/>
+        <rect x="134" y="180" width="120" height="9" rx="4.5" fill="#DCD5F7"/>
+        <rect x="134" y="196" width="90" height="7" rx="3.5" fill="#EFEBFD"/>
+        <rect x="94" y="222" width="176" height="9" rx="4.5" fill="#EFEBFD"/>
+        <rect x="94" y="240" width="140" height="9" rx="4.5" fill="#EFEBFD"/>
+        <rect x="94" y="258" width="160" height="9" rx="4.5" fill="#2FD9C9"/>
+        <rect x="150" y="320" width="120" height="110" rx="20" fill="#FFFFFF" opacity=".95"/>
+        <path d="M210 344l30 12v22c0 22-13 37-30 45-17-8-30-23-30-45v-22z" fill="#6C5DD3"/>
+        <path d="M198 380l9 9 20-20" stroke="#fff" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="330" cy="120" r="34" fill="#2FD9C9" opacity=".9"/>
+        <path d="M316 120l10 10 20-22" stroke="#0B3B36" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="300" y="230" width="86" height="70" rx="10" fill="#fff" opacity=".95"/>
+        <rect x="312" y="242" width="62" height="6" rx="3" fill="#6C5DD3"/>
+        <rect x="312" y="254" width="46" height="6" rx="3" fill="#DAD6F5"/>
+        <rect x="312" y="266" width="54" height="6" rx="3" fill="#DAD6F5"/>
+        <circle cx="358" cy="286" r="8" fill="#2FD9C9"/>
+        <rect x="40" y="240" width="20" height="20" rx="5" fill="#fff" opacity=".8" transform="rotate(20 50 250)"/>
+      </svg>
+    </div>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    document.getElementById('toggle-pass').addEventListener('click', () => {
+      const pw = document.getElementById('password');
+      const icon = document.getElementById('toggle-pass');
+      const isPw = pw.type === 'password';
+      pw.type = isPw ? 'text' : 'password';
+      icon.classList.toggle('fa-eye', !isPw);
+      icon.classList.toggle('fa-eye-slash', isPw);
+    });
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errorBox = document.getElementById('error-box');
+      errorBox.innerHTML = '';
+      try {
+        const res = await EmdmsApi.post('/api/auth/admin/login', { username, password });
+        EmdmsApi.setToken(res.token);
+        localStorage.setItem('emdms_user', JSON.stringify(res.user));
+        window.location.href = '/admin/dashboard.html';
+      } catch (err) {
+        errorBox.innerHTML = `<div class="error-banner">${EmdmsUI.escapeHtml(err.message)}</div>`;
+      }
+    });
+  </script>
+</body>
+</html>

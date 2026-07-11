@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Invigilator Dashboard — EMDMS</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+<link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="mark"><i class="fa-solid fa-eye"></i></div><div><h1>EMDMS</h1></div></div>
+      <nav id="exam-nav"><div style="padding:14px;color:#9aa4b5;font-size:12.5px;">Loading assigned exams…</div></nav>
+      <div class="user-box">
+        <b id="inv-name">Invigilator</b>
+        <span id="inv-role">Exam Supervisor</span>
+        <button class="btn btn-outline btn-sm btn-block" id="logout-btn">Log out</button>
+      </div>
+    </aside>
+    <div class="main-area">
+      <div class="topbar">
+        <h2 id="page-title">Select an examination</h2>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button id="recordings-btn" class="btn btn-outline btn-sm" style="display:none;">Recordings</button>
+          <button id="incidents-btn" class="btn btn-outline btn-sm" style="display:none;">Incident Report</button>
+          <input id="search-box" placeholder="Search student by name or reg. no." style="padding:8px 12px;border:1px solid var(--line);border-radius:6px;width:260px;display:none;"/>
+          <button class="btn btn-outline btn-sm" id="topbar-logout-btn">Log out</button>
+        </div>
+      </div>
+      <div class="content" id="content"><div class="empty-state">Select an examination from the left to begin monitoring.</div></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/invigilator.js"></script>
+</body>
+</html>

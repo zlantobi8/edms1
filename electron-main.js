@@ -3,8 +3,10 @@ const path = require('path');
 
 function startServer() {
   try {
+    console.log('Starting Express server...');
     const serverPath = path.join(__dirname, 'server.js');
     require(serverPath);
+    console.log('Express server loaded.');
   } catch (err) {
     console.error('Failed to start server:', err);
   }
@@ -13,11 +15,12 @@ function startServer() {
 function openBrowser(url) {
   setTimeout(() => {
     try {
+      console.log('Opening browser to', url);
       shell.openExternal(url);
     } catch (err) {
       console.error('Failed to open browser:', err);
     }
-  }, 1500);
+  }, 5000);
 }
 
 function createWindow() {

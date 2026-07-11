@@ -3,8 +3,28 @@ const fs = require('fs');
 const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'emdms.db');
-const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
+// Determine the database path based on environment
+let DB_PATH;
+let SCHEMA_PATH;
+
+if (process.env.DB_PATH) {
+  DB_PATH = process.env.DB_PATH;
+  SCHEMA_PATH = path.join(__dirname, 'schema.sql');
+} else {
+  // Check if running in Electron
+  const isElectron = process.type === 'browser' || process.versions.electron;
+  if (isElectron) {
+    // Use userData directory which is writable even in packaged Electron app
+    const app = require('electron').app;
+    const userDataPath = app.getPath('userData');
+    DB_PATH = path.join(userDataPath, 'emdms.db');
+    SCHEMA_PATH = path.join(__dirname, 'schema.sql');
+  } else {
+    // Running as plain Node.js
+    DB_PATH = path.join(__dirname, 'emdms.db');
+    SCHEMA_PATH = path.join(__dirname, 'schema.sql');
+  }
+}
 
 // Ensure the folder that will hold the database file exists.
 fs.mkdirSync(path.dirname(path.resolve(DB_PATH)), { recursive: true });

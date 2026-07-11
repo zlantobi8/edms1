@@ -3,7 +3,22 @@ const path = require('path');
 const os = require('os');
 const selfsigned = require('selfsigned');
 
-const CERT_DIR = path.join(__dirname, '..', 'database', 'certs');
+// Place certificates in a writable location. When running as a packaged
+// Electron app, __dirname may be inside an asar archive which is read-only,
+// so prefer the Electron `userData` folder when available.
+let CERT_DIR;
+if (process.env.CERT_DIR) {
+  CERT_DIR = process.env.CERT_DIR;
+} else {
+  const isElectron = process.type === 'browser' || !!process.versions.electron;
+  if (isElectron) {
+    const { app } = require('electron');
+    CERT_DIR = path.join(app.getPath('userData'), 'certs');
+  } else {
+    CERT_DIR = path.join(__dirname, '..', 'database', 'certs');
+  }
+}
+
 const KEY_PATH = path.join(CERT_DIR, 'key.pem');
 const CERT_PATH = path.join(CERT_DIR, 'cert.pem');
 

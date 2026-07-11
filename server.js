@@ -63,6 +63,25 @@ app.use('/api/incidents', require('./routes/incidents'));
 
 app.get('/api/health', (req, res) => res.json({ success: true, message: 'EMDMS server is running.', time: new Date().toISOString() }));
 
+app.get('/api/server-info', (req, res) => {
+  const nets = os.networkInterfaces();
+  const lanAddresses = [];
+  Object.values(nets).forEach((ifaces) => {
+    (ifaces || []).forEach((iface) => {
+      if (iface.family === 'IPv4' && !iface.internal) lanAddresses.push(iface.address);
+    });
+  });
+  const scheme = USE_HTTPS ? 'https' : 'http';
+  const port = PORT;
+  res.json({
+    success: true,
+    scheme,
+    port,
+    local: `${scheme}://localhost:${port}`,
+    network: lanAddresses.map((addr) => `${scheme}://${addr}:${port}`),
+  });
+});
+
 // ---------------- STATIC FRONTEND ----------------
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));

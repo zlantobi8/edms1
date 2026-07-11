@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EMDMS — Server Running</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 40px;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+    }
+    h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 30px;
+    }
+    .status {
+      display: inline-block;
+      background: #4caf50;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 30px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .address-box {
+      background: #f5f5f5;
+      border-left: 4px solid #667eea;
+      padding: 16px;
+      margin: 16px 0;
+      border-radius: 6px;
+      text-align: left;
+    }
+    .address-label {
+      color: #999;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+    .address-text {
+      color: #333;
+      font-size: 16px;
+      font-family: 'Courier New', monospace;
+      word-break: break-all;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .address-text:hover {
+      background: #e0e0e0;
+    }
+    .network-addresses {
+      margin-top: 10px;
+    }
+    .network-item {
+      margin-top: 8px;
+    }
+    .info-text {
+      color: #666;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-top: 30px;
+      padding-top: 30px;
+      border-top: 1px solid #eee;
+    }
+    .button-group {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+    .error {
+      color: #d32f2f;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+    .loading {
+      color: #999;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>EMDMS</h1>
+    <p class="subtitle">Examination Malpractice Detection & CBT System</p>
+    
+    <div id="content" class="loading">
+      <p>Loading server information...</p>
+    </div>
+  </div>
+
+  <script>
+    async function loadServerInfo() {
+      const contentDiv = document.getElementById('content');
+      try {
+        const response = await fetch('https://localhost:3000/api/server-info');
+        if (!response.ok) throw new Error('Failed to fetch server info');
+        
+        const data = await response.json();
+        const { local, network } = data;
+        
+        let html = '<div class="status">✓ Server Running</div>';
+        
+        // Local address
+        html += `
+          <div class="address-box">
+            <div class="address-label">Local Address</div>
+            <div class="address-text" onclick="copyToClipboard(this.textContent)">${local}</div>
+          </div>
+        `;
+        
+        // Network addresses
+        if (network && network.length > 0) {
+          html += `<div class="address-box">
+            <div class="address-label">Network Address(es) — Share with Students</div>
+            <div class="network-addresses">`;
+          network.forEach((addr) => {
+            html += `<div class="network-item">
+              <div class="address-text" onclick="copyToClipboard(this.textContent)">${addr}</div>
+            </div>`;
+          });
+          html += `</div></div>`;
+        }
+        
+        html += `
+          <p class="info-text">
+            <strong>The server is now running!</strong><br><br>
+            Share the <strong>Network Address(es)</strong> above with students and invigilators to connect from other devices on the network.
+            <br><br>
+            <small>Click any address to copy it to clipboard.</small>
+          </p>
+          <div class="button-group">
+            <button class="btn btn-primary" onclick="window.location.href='${local}'">Open Dashboard</button>
+            <button class="btn btn-secondary" onclick="reloadInfo()">Refresh</button>
+          </div>
+        `;
+        
+        contentDiv.innerHTML = html;
+      } catch (err) {
+        contentDiv.innerHTML = `
+          <div class="status" style="background: #f44336;">✗ Error</div>
+          <p class="error">Could not connect to server: ${err.message}</p>
+          <p class="error">Ensure the server is running and try again.</p>
+          <button class="btn btn-primary" onclick="reloadInfo()" style="margin-top: 20px;">Retry</button>
+        `;
+      }
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Copied to clipboard:\n\n' + text);
+      }).catch(err => {
+        alert('Failed to copy: ' + err);
+      });
+    }
+
+    function reloadInfo() {
+      document.getElementById('content').innerHTML = '<p class="loading">Loading server information...</p>';
+      loadServerInfo();
+    }
+
+    // Load on page load
+    loadServerInfo();
+    // Refresh every 3 seconds
+    setInterval(loadServerInfo, 3000);
+  </script>
+</body>
+</html>

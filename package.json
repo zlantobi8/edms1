@@ -34,12 +34,19 @@
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "electron": "^25.0.0",
+    "electron": "^31.7.7",
     "electron-builder": "^24.0.0",
     "electron-rebuild": "^3.2.9"
   },
   "build": {
     "appId": "org.emdms.cbt",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bcrypt/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*"
+    ],
     "files": [
       "**/*",
       "!node_modules/**/.cache/**"

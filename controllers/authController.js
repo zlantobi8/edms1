@@ -3,12 +3,12 @@ const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const Invigilator = require('../models/Invigilator');
 const Student = require('../models/Student');
+const { getJwtSecret } = require('../services/secretsService');
 
-const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 
 function issueToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN });
 }
 
 function setCookieAndRespond(res, token, user) {

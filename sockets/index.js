@@ -2,8 +2,7 @@ const jwt = require('jsonwebtoken');
 const Submission = require('../models/Submission');
 const ActivityLog = require('../models/ActivityLog');
 const { canAccessExam } = require('../services/examAccess');
-
-const JWT_SECRET = process.env.JWT_SECRET;
+const { getJwtSecret } = require('../services/secretsService');
 
 function examRoom(examId) { return `exam:${examId}`; }
 function studentRoom(submissionId) { return `submission:${submissionId}`; }
@@ -12,7 +11,7 @@ function authenticateSocket(socket, next) {
   const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace('Bearer ', '');
   if (!token) return next(new Error('Authentication required'));
   try {
-    socket.user = jwt.verify(token, JWT_SECRET);
+    socket.user = jwt.verify(token, getJwtSecret());
     next();
   } catch (err) {
     next(new Error('Invalid or expired session'));

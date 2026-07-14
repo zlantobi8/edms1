@@ -18,6 +18,16 @@
   const FACE_MATCH_DISTANCE_THRESHOLD = 0.55;
   const IDENTITY_MISMATCH_STREAK_REQUIRED = 2;
 
+  // TinyFaceDetector at a larger input size + lower confidence threshold.
+  // The original bug wasn't the detector itself — it's fast and reliable —
+  // it was that it ran at inputSize 160 with scoreThreshold 0.5, which is
+  // too small/strict to reliably pick up a second, smaller, or off-center
+  // face. Bumping these fixes multi-face detection without introducing a
+  // heavier model.
+  function detectorOptions() {
+    return new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 });
+  }
+
   // COCO-SSD class names that are legitimate reasons for concern during an
   // exam. "laptop"/"tv"/"keyboard"/"mouse" are deliberately excluded since
   // the student's own exam device would constantly trigger them.
@@ -43,13 +53,11 @@
 
   async function loadModels() {
     if (modelsLoaded) return;
-    // ssdMobilenetv1 is a full CNN face detector — noticeably more accurate
-    // than the old tinyFaceDetector at spotting multiple/partial faces in
-    // frame, at the cost of being a bit heavier (fine at a 2.5s tick rate).
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(`${MODEL_BASE}/ssd_mobilenetv1`);
+    await faceapi.nets.tinyFaceDetector.loadFromUri(`${MODEL_BASE}/tiny_face_detector`);
     await faceapi.nets.faceLandmark68TinyNet.loadFromUri(`${MODEL_BASE}/face_landmark_68_tiny`);
     await faceapi.nets.faceRecognitionNet.loadFromUri(`${MODEL_BASE}/face_recognition`);
     modelsLoaded = true;
+    console.log('[AI Proctor] face detection models loaded successfully.');
   }
 
   // Object detection model loads independently of the face models — if the
@@ -60,6 +68,7 @@
     if (objectModel || typeof cocoSsd === 'undefined') return;
     try {
       objectModel = await cocoSsd.load({ modelUrl: `${MODEL_BASE}/coco-ssd/model.json` });
+      console.log('[AI Proctor] object detection model loaded successfully.');
     } catch (err) {
       console.warn('[AI Proctor] object detection model unavailable (run scripts/download-coco-ssd-model.js):', err.message);
       objectModel = null;
@@ -96,10 +105,11 @@
     if (!running || !videoEl || videoEl.readyState < 2) return;
     try {
       const detections = await faceapi
-        .detectAllFaces(videoEl, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .detectAllFaces(videoEl, detectorOptions())
         .withFaceLandmarks(true);
 
       const count = detections.length;
+      console.debug(`[AI Proctor] tick: ${count} face(s) detected`);
 
       if (count === 0) {
         consecutive.no_face += 1;
@@ -143,7 +153,7 @@
     try {
       const img = await faceapi.fetchImage(imageUrl);
       const result = await faceapi
-        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .detectSingleFace(img, detectorOptions())
         .withFaceLandmarks(true)
         .withFaceDescriptor();
       return result ? result.descriptor : null;
@@ -157,7 +167,7 @@
     if (!running || !referenceDescriptor || !videoEl || videoEl.readyState < 2) return;
     try {
       const result = await faceapi
-        .detectSingleFace(videoEl, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .detectSingleFace(videoEl, detectorOptions())
         .withFaceLandmarks(true)
         .withFaceDescriptor();
       if (!result) return; // no_face is already handled by detectTick — don't double-report here

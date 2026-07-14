@@ -6,13 +6,14 @@
   const searchBox = document.getElementById('search-box');
   const user = JSON.parse(localStorage.getItem('emdms_user') || '{}');
 
-  if (!EmdmsApi.getToken()) window.location.href = '/invigilator/login.html';
+  if (!EmdmsApi.getToken()) window.location.replace('/invigilator/login.html');
   document.getElementById('inv-name').textContent = user.full_name || 'Invigilator';
-  window.addEventListener('emdms:unauthorized', () => window.location.href = '/invigilator/login.html');
+  window.addEventListener('emdms:unauthorized', () => window.location.replace('/invigilator/login.html'));
   async function doLogout() {
     await EmdmsApi.post('/api/auth/logout').catch(() => {});
-    EmdmsApi.clearToken(); localStorage.removeItem('emdms_user');
-    window.location.href = '/';
+    socket.disconnect();
+    EmdmsApi.clearAll();
+    window.location.replace('/');
   }
   document.getElementById('logout-btn').addEventListener('click', doLogout);
   document.getElementById('topbar-logout-btn').addEventListener('click', doLogout);
@@ -71,7 +72,7 @@
     return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
   }
 
-  const HIGH_SEVERITY_EVENTS = new Set(['no_face', 'multiple_faces', 'unusual_noise', 'fullscreen_exit']);
+  const HIGH_SEVERITY_EVENTS = new Set(['no_face', 'multiple_faces', 'unusual_noise', 'fullscreen_exit', 'identity_mismatch', 'suspicious_object']);
 
   async function openIncidentsModal() {
     if (!currentExamId) return;

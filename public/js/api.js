@@ -6,6 +6,20 @@
   function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
   function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
+  // Wipes every piece of client-side state EMDMS keeps in the browser —
+  // the auth token, the cached user profile, and any per-exam tab-lock
+  // markers (localStorage keys named `emdms_lock_<examId>`) — plus
+  // sessionStorage, in case anything is ever stored there in the future.
+  // This never touches the server's SQLite database; it only resets what
+  // this particular browser/device remembers, so the next person to use
+  // this machine starts with a clean slate.
+  function clearAll() {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith('emdms_'))
+      .forEach((k) => localStorage.removeItem(k));
+    try { sessionStorage.clear(); } catch (e) { /* ignore */ }
+  }
+
   async function request(method, url, body, options = {}) {
     const headers = { ...(options.headers || {}) };
     let payload = body;
@@ -40,6 +54,6 @@
     post: (url, body, options) => request('POST', url, body, options),
     put: (url, body) => request('PUT', url, body),
     del: (url) => request('DELETE', url),
-    getToken, setToken, clearToken,
+    getToken, setToken, clearToken, clearAll,
   };
 })();

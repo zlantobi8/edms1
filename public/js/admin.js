@@ -6,14 +6,13 @@
   const user = JSON.parse(localStorage.getItem('emdms_user') || '{}');
 
   // Redirect to login if no token.
-  if (!EmdmsApi.getToken()) window.location.href = '/admin/login.html';
+  if (!EmdmsApi.getToken()) window.location.replace('/admin/login.html');
   document.getElementById('admin-name').textContent = user.full_name || 'Administrator';
-  window.addEventListener('emdms:unauthorized', () => window.location.href = '/admin/login.html');
+  window.addEventListener('emdms:unauthorized', () => window.location.replace('/admin/login.html'));
   async function doLogout() {
     await EmdmsApi.post('/api/auth/logout').catch(() => {});
-    EmdmsApi.clearToken();
-    localStorage.removeItem('emdms_user');
-    window.location.href = '/';
+    EmdmsApi.clearAll();
+    window.location.replace('/');
   }
   document.getElementById('logout-btn').addEventListener('click', doLogout);
   document.getElementById('topbar-logout-btn').addEventListener('click', doLogout);
@@ -617,7 +616,7 @@
   }
 
   // ================= INCIDENT REPORTS =================
-  const HIGH_SEVERITY_EVENTS = new Set(['no_face', 'multiple_faces', 'unusual_noise', 'fullscreen_exit']);
+  const HIGH_SEVERITY_EVENTS = new Set(['no_face', 'multiple_faces', 'unusual_noise', 'fullscreen_exit', 'identity_mismatch', 'suspicious_object']);
 
   async function renderIncidents(param) {
     const { data: exams } = await EmdmsApi.get('/api/exams');

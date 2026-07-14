@@ -1,9 +1,10 @@
 const express = require('express');
 const ctrl = require('../controllers/academicController');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { localOnly } = require('../middleware/localOnly');
 
 const router = express.Router();
-router.use(authenticate, requireRole('administrator'));
+router.use(localOnly, authenticate, requireRole('administrator'));
 
 router.get('/faculties', ctrl.listFaculties);
 router.post('/faculties', ctrl.createFaculty);

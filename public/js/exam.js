@@ -607,14 +607,22 @@
     multiple_faces: 'Multiple faces detected — only you should be visible during the exam.',
     head_turned_away: 'Please keep facing your screen during the exam.',
     unusual_noise: 'Unusual noise detected — please keep your environment quiet.',
+    identity_mismatch: 'We could not verify your identity against your enrollment photo.',
+    suspicious_object: 'An unauthorized object (e.g. phone or book) was detected in view.',
   };
 
   function startAIProctoring() {
     if (!window.EmdmsAIProctor || !state.localStream) return;
     const videoEl = document.getElementById('local-webcam');
+    let referencePhotoUrl = null;
+    try {
+      const user = JSON.parse(localStorage.getItem('emdms_user') || 'null');
+      referencePhotoUrl = user && user.passport_path;
+    } catch (e) { /* no enrollment photo on file — identity check simply won't run */ }
     EmdmsAIProctor.start({
       videoElement: videoEl,
       stream: state.localStream, // includes audio track (if granted) for local noise monitoring only
+      referencePhotoUrl,
       onEvent: (eventType, details) => {
         const message = AI_EVENT_MESSAGES[eventType] || 'Unusual activity detected.';
         toast(message, 'warn', 6000);

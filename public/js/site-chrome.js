@@ -47,7 +47,7 @@
             </div>
             <div>
               <h4>Portals</h4>
-              <a href="/admin/login.html">Administrator</a>
+              <a href="/admin/login.html" class="admin-only-link">Administrator</a>
               <a href="/invigilator/login.html">Invigilator</a>
               <a href="/student/login.html">Student</a>
             </div>
@@ -71,6 +71,15 @@
     }[c]));
   }
 
+  function isLocalHost() {
+    return ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+  }
+
+  function hideAdminLinksIfRemote() {
+    if (isLocalHost()) return;
+    document.querySelectorAll('.admin-only-link').forEach((el) => el.remove());
+  }
+
   function mount(activeKey) {
     const navHost = document.getElementById('site-navbar-root');
     const footerHost = document.getElementById('site-footer-root');
@@ -82,7 +91,8 @@
     if (toggle && links) {
       toggle.addEventListener('click', () => links.classList.toggle('open'));
     }
+    hideAdminLinksIfRemote();
   }
 
-  window.EmdmsSiteChrome = { mount, INSTITUTION_NAME };
+  window.EmdmsSiteChrome = { mount, hideAdminLinksIfRemote, INSTITUTION_NAME };
 })();

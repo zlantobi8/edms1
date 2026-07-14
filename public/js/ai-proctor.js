@@ -1,44 +1,69 @@
-/* global faceapi, window */
+/* global faceapi, tf, cocoSsd, window */
 (function () {
   const MODEL_BASE = '/models';
   const DETECT_INTERVAL_MS = 2500;
+  const IDENTITY_CHECK_INTERVAL_MS = 10000; // face recognition is heavier — check less often
+  const OBJECT_CHECK_INTERVAL_MS = 4000;
   const AUDIO_CHECK_INTERVAL_MS = 500;
 
-  // How many consecutive detection ticks a condition must persist before we
-  // treat it as a real event rather than a brief camera glitch or a normal
-  // quick glance away. multiple_faces fires fast (it's unambiguous and
-  // serious); head_turned_away requires sustained persistence since a quick
-  // glance shouldn't be flagged.
   const PERSIST_CHECKS_REQUIRED = { no_face: 2, multiple_faces: 1, head_turned_away: 3 };
-  // Minimum time between repeated firings of the same event type, so a
-  // condition that persists for minutes doesn't flood the log/socket.
-  const COOLDOWN_MS = { no_face: 20000, multiple_faces: 20000, head_turned_away: 25000, unusual_noise: 15000 };
+  const COOLDOWN_MS = {
+    no_face: 20000, multiple_faces: 20000, head_turned_away: 25000, unusual_noise: 15000,
+    identity_mismatch: 30000, suspicious_object: 15000,
+  };
 
-  // Empirical thresholds — tuned conservatively to favor fewer false
-  // positives over catching every possible edge case. These are heuristics,
-  // not true 3D head-pose estimation or a trained audio classifier.
-  const HEAD_TURN_OFFSET_RATIO = 0.22; // nose-tip horizontal offset vs. jaw width
+  const HEAD_TURN_OFFSET_RATIO = 0.22;
   const LOUD_NOISE_RMS_THRESHOLD = 0.28;
-  const LOUD_NOISE_STREAK_REQUIRED = 4; // ~2s sustained at 500ms interval
+  const LOUD_NOISE_STREAK_REQUIRED = 4;
+  const FACE_MATCH_DISTANCE_THRESHOLD = 0.55;
+  const IDENTITY_MISMATCH_STREAK_REQUIRED = 2;
+
+  // COCO-SSD class names that are legitimate reasons for concern during an
+  // exam. "laptop"/"tv"/"keyboard"/"mouse" are deliberately excluded since
+  // the student's own exam device would constantly trigger them.
+  const SUSPICIOUS_OBJECT_CLASSES = new Set(['cell phone', 'book', 'remote']);
+  const OBJECT_SCORE_THRESHOLD = 0.6;
 
   let modelsLoaded = false;
+  let objectModel = null;
   let running = false;
   let videoEl = null;
   let onEvent = null;
   let detectTimer = null;
+  let identityTimer = null;
+  let objectTimer = null;
   let audioTimer = null;
   let audioCtx = null;
   let analyser = null;
   let audioData = null;
+  let referenceDescriptor = null;
 
-  const consecutive = { no_face: 0, multiple_faces: 0, head_turned_away: 0 };
+  const consecutive = { no_face: 0, multiple_faces: 0, head_turned_away: 0, identity_mismatch: 0 };
   const lastFired = {};
 
   async function loadModels() {
     if (modelsLoaded) return;
-    await faceapi.nets.tinyFaceDetector.loadFromUri(`${MODEL_BASE}/tiny_face_detector`);
+    // ssdMobilenetv1 is a full CNN face detector — noticeably more accurate
+    // than the old tinyFaceDetector at spotting multiple/partial faces in
+    // frame, at the cost of being a bit heavier (fine at a 2.5s tick rate).
+    await faceapi.nets.ssdMobilenetv1.loadFromUri(`${MODEL_BASE}/ssd_mobilenetv1`);
     await faceapi.nets.faceLandmark68TinyNet.loadFromUri(`${MODEL_BASE}/face_landmark_68_tiny`);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(`${MODEL_BASE}/face_recognition`);
     modelsLoaded = true;
+  }
+
+  // Object detection model loads independently of the face models — if the
+  // weight files described in scripts/download-coco-ssd-model.js haven't
+  // been downloaded/committed yet, we simply skip object detection rather
+  // than fail the whole proctoring session.
+  async function loadObjectModel() {
+    if (objectModel || typeof cocoSsd === 'undefined') return;
+    try {
+      objectModel = await cocoSsd.load({ modelUrl: `${MODEL_BASE}/coco-ssd/model.json` });
+    } catch (err) {
+      console.warn('[AI Proctor] object detection model unavailable (run scripts/download-coco-ssd-model.js):', err.message);
+      objectModel = null;
+    }
   }
 
   function canFire(type) {
@@ -54,10 +79,6 @@
   /**
    * Heuristic "looking away" check: compares the nose tip's horizontal
    * position against the midpoint of the jawline, normalized by face width.
-   * A centered face gives a near-zero offset; a face turned well to one
-   * side pushes the nose tip noticeably off-center. This is a proxy for
-   * yaw, not a calibrated pose estimate — it deliberately requires several
-   * consecutive detections before firing to avoid flagging brief glances.
    */
   function isHeadTurnedAway(landmarks) {
     const points = landmarks.positions;
@@ -75,7 +96,7 @@
     if (!running || !videoEl || videoEl.readyState < 2) return;
     try {
       const detections = await faceapi
-        .detectAllFaces(videoEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 }))
+        .detectAllFaces(videoEl, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
         .withFaceLandmarks(true);
 
       const count = detections.length;
@@ -108,19 +129,77 @@
         }
       }
     } catch (err) {
-      // A failed inference tick should never take down exam monitoring.
       console.warn('[AI Proctor] detection tick failed:', err.message);
     }
   }
 
+  // ---------------- Identity verification ----------------
+  // Compares the live camera feed against the student's own enrollment
+  // (passport) photo using face-api.js's recognition descriptors — a
+  // 128-dimensional vector unique to a person's face geometry. This never
+  // leaves the device: the comparison runs entirely in the browser.
+  async function computeReferenceDescriptor(imageUrl) {
+    if (!imageUrl) return null;
+    try {
+      const img = await faceapi.fetchImage(imageUrl);
+      const result = await faceapi
+        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .withFaceLandmarks(true)
+        .withFaceDescriptor();
+      return result ? result.descriptor : null;
+    } catch (err) {
+      console.warn('[AI Proctor] could not compute reference descriptor from enrollment photo:', err.message);
+      return null;
+    }
+  }
+
+  async function identityTick() {
+    if (!running || !referenceDescriptor || !videoEl || videoEl.readyState < 2) return;
+    try {
+      const result = await faceapi
+        .detectSingleFace(videoEl, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .withFaceLandmarks(true)
+        .withFaceDescriptor();
+      if (!result) return; // no_face is already handled by detectTick — don't double-report here
+      const distance = faceapi.euclideanDistance(referenceDescriptor, result.descriptor);
+      if (distance > FACE_MATCH_DISTANCE_THRESHOLD) {
+        consecutive.identity_mismatch += 1;
+        if (consecutive.identity_mismatch >= IDENTITY_MISMATCH_STREAK_REQUIRED && canFire('identity_mismatch')) {
+          fire('identity_mismatch', {
+            message: 'The person on camera does not match the enrollment photo on file',
+            distance: Number(distance.toFixed(3)),
+          });
+        }
+      } else {
+        consecutive.identity_mismatch = 0;
+      }
+    } catch (err) {
+      console.warn('[AI Proctor] identity check failed:', err.message);
+    }
+  }
+
+  // ---------------- Object detection (phones, books, etc.) ----------------
+  async function objectTick() {
+    if (!running || !objectModel || !videoEl || videoEl.readyState < 2) return;
+    try {
+      const predictions = await objectModel.detect(videoEl, 10, OBJECT_SCORE_THRESHOLD);
+      const hit = predictions.find((p) => SUSPICIOUS_OBJECT_CLASSES.has(p.class));
+      if (hit && canFire('suspicious_object')) {
+        fire('suspicious_object', {
+          message: `A ${hit.class} was detected in the camera frame`,
+          object: hit.class,
+          confidence: Number(hit.score.toFixed(3)),
+        });
+      }
+    } catch (err) {
+      console.warn('[AI Proctor] object detection tick failed:', err.message);
+    }
+  }
+
   // ---------------- Audio: local volume-level monitoring only ----------------
-  // Audio is analyzed entirely in the browser (RMS volume level) purely to
-  // detect sustained loud noise. The raw audio itself is never recorded,
-  // stored, or transmitted anywhere — only the resulting "unusual_noise"
-  // event flag is sent, same as any other proctoring signal.
   function startAudioMonitoring(stream) {
     const audioTracks = stream.getAudioTracks();
-    if (!audioTracks.length) return; // microphone permission wasn't granted — skip silently
+    if (!audioTracks.length) return;
 
     try {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -167,13 +246,19 @@
 
   /**
    * Starts AI proctoring against a live <video> element already showing the
-   * student's camera feed. `stream` should include the audio track (if
-   * available) for noise monitoring — video-only streams simply skip that
-   * part. Returns true if monitoring started, false if the models failed
-   * to load (e.g. unsupported browser) — the exam should continue normally
-   * either way, just without AI signals.
+   * student's camera feed.
+   *  - `stream` should include the audio track (if available) for noise
+   *    monitoring — video-only streams simply skip that part.
+   *  - `referencePhotoUrl` (optional) is the student's enrollment/passport
+   *    photo. If provided, a reference face descriptor is computed once at
+   *    start-up and the live feed is periodically checked against it to
+   *    catch a different person sitting the exam.
+   * Returns true if face monitoring started, false if the models failed to
+   * load — the exam should continue normally either way, just without AI
+   * signals. Object detection and identity verification degrade
+   * independently and never block the exam.
    */
-  async function start({ videoElement, stream, onEvent: cb }) {
+  async function start({ videoElement, stream, referencePhotoUrl, onEvent: cb }) {
     videoEl = videoElement;
     onEvent = cb;
     running = true;
@@ -186,13 +271,29 @@
     }
     detectTimer = setInterval(detectTick, DETECT_INTERVAL_MS);
     if (stream) startAudioMonitoring(stream);
+
+    if (referencePhotoUrl) {
+      computeReferenceDescriptor(referencePhotoUrl).then((descriptor) => {
+        referenceDescriptor = descriptor;
+        if (descriptor && running) identityTimer = setInterval(identityTick, IDENTITY_CHECK_INTERVAL_MS);
+      });
+    }
+
+    loadObjectModel().then(() => {
+      if (objectModel && running) objectTimer = setInterval(objectTick, OBJECT_CHECK_INTERVAL_MS);
+    });
+
     return true;
   }
 
   function stop() {
     running = false;
     if (detectTimer) clearInterval(detectTimer);
-    detectTimer = null;
+    if (identityTimer) clearInterval(identityTimer);
+    if (objectTimer) clearInterval(objectTimer);
+    detectTimer = null; identityTimer = null; objectTimer = null;
+    referenceDescriptor = null;
+    consecutive.identity_mismatch = 0;
     stopAudioMonitoring();
   }
 

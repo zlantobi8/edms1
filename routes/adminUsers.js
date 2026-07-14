@@ -1,10 +1,11 @@
 const express = require('express');
 const ctrl = require('../controllers/adminUserController');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { localOnly } = require('../middleware/localOnly');
 const upload = require('../middleware/upload');
 
 const router = express.Router();
-router.use(authenticate, requireRole('administrator'));
+router.use(localOnly, authenticate, requireRole('administrator'));
 
 router.get('/students', ctrl.listStudents);
 router.post('/students', upload.single('passport'), ctrl.registerStudent);

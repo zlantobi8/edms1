@@ -5,18 +5,18 @@
   const pageTitle = document.getElementById('page-title');
   const user = JSON.parse(localStorage.getItem('emdms_user') || '{}');
 
-  if (!EmdmsApi.getToken()) window.location.href = '/student/login.html';
+  if (!EmdmsApi.getToken()) window.location.replace('/student/login.html');
   const displayName = user.full_name || 'Student';
   document.getElementById('student-name').textContent = displayName;
   document.getElementById('student-reg').textContent = user.reg_number || '';
   document.getElementById('topbar-name').textContent = displayName;
   document.getElementById('topbar-role').textContent = user.reg_number || 'Student';
   document.getElementById('topbar-avatar').src = `https://ui-avatars.com/api/?background=6C5DD3&color=fff&bold=true&name=${encodeURIComponent(displayName)}`;
-  window.addEventListener('emdms:unauthorized', () => window.location.href = '/student/login.html');
+  window.addEventListener('emdms:unauthorized', () => window.location.replace('/student/login.html'));
   async function doLogout() {
     await EmdmsApi.post('/api/auth/logout').catch(() => {});
-    EmdmsApi.clearToken(); localStorage.removeItem('emdms_user');
-    window.location.href = '/';
+    EmdmsApi.clearAll();
+    window.location.replace('/');
   }
   document.getElementById('logout-btn').addEventListener('click', doLogout);
   document.getElementById('topbar-logout-btn').addEventListener('click', doLogout);

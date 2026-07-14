@@ -12,6 +12,7 @@ const { Server } = require('socket.io');
 const { initializeDatabase } = require('./database/db');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 const { registerSocketHandlers } = require('./sockets');
+const { localOnly } = require('./middleware/localOnly');
 const { getOrCreateCertificate } = require('./services/certService');
 
 // Initialize (or upgrade) the SQLite database and seed a default admin.
@@ -83,7 +84,20 @@ app.get('/api/server-info', (req, res) => {
 });
 
 // ---------------- STATIC FRONTEND ----------------
-app.use(express.static(path.join(__dirname, 'public')));
+// The admin portal must only ever be reachable from the machine running the
+// server itself — never from other devices on the LAN — so gate it before
+// the general static handler below gets a chance to serve those files.
+app.use('/admin', localOnly, express.static(path.join(__dirname, 'public', 'admin'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  },
+}));
+
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  },
+}));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // Fallback: any unknown /api route -> 404 JSON. Any other unknown route -> index.

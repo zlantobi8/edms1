@@ -58,14 +58,25 @@ function openBrowser(url) {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 600,
-    height: 700,
+    width: 1360,
+    height: 860,
+    minWidth: 1024,
+    minHeight: 640,
     resizable: true,
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
 
   win.loadURL('https://localhost:3000/server-info.html');
-  win.webContents.openDevTools();
+  win.maximize();
+
+  // DevTools is only useful while actively debugging — leaving it open by
+  // default docks a panel that eats window space and can steal keyboard
+  // focus from the page, making dashboard inputs feel unresponsive. Open it
+  // on demand instead with the normal Electron shortcut (Ctrl+Shift+I /
+  // Cmd+Option+I), or set EMDMS_DEVTOOLS=1 to auto-open it while debugging.
+  if (process.env.EMDMS_DEVTOOLS === '1') {
+    win.webContents.openDevTools();
+  }
 }
 
 // More targeted certificate bypass for localhost (safer than a global ignore)

@@ -1,10 +1,11 @@
 const express = require('express');
 const ctrl = require('../controllers/examController');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { localOnly } = require('../middleware/localOnly');
 const upload = require('../middleware/upload');
 
 const router = express.Router();
-router.use(authenticate, requireRole('administrator'));
+router.use(localOnly, authenticate, requireRole('administrator'));
 
 router.get('/', ctrl.listExams);
 router.post('/', ctrl.createExam);

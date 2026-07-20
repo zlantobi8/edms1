@@ -84,4 +84,4 @@ function getOrCreateCertificate() {
   return { key: fs.readFileSync(KEY_PATH), cert: fs.readFileSync(CERT_PATH) };
 }
 
-module.exports = { getOrCreateCertificate, getLanAddresses };
+module.exports = { getOrCreateCertificate, getLanAddresses, CERT_DIR };

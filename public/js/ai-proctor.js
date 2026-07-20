@@ -1,79 +1,75 @@
-/* global faceapi, tf, cocoSsd, window */
+/* global faceapi, window */
 (function () {
   const MODEL_BASE = '/models';
-  const DETECT_INTERVAL_MS = 2500;
-  const IDENTITY_CHECK_INTERVAL_MS = 10000; // face recognition is heavier — check less often
-  const OBJECT_CHECK_INTERVAL_MS = 4000;
-  const AUDIO_CHECK_INTERVAL_MS = 500;
+  const WASM_BASE = '/js/mediapipe-wasm';
+  const FACE_LANDMARKER_MODEL = `${MODEL_BASE}/mediapipe/face_landmarker.task`;
+  const OBJECT_DETECTOR_MODEL = `${MODEL_BASE}/mediapipe/efficientdet_lite0.tflite`;
 
-  const PERSIST_CHECKS_REQUIRED = { no_face: 2, multiple_faces: 1, head_turned_away: 3 };
-  const COOLDOWN_MS = {
-    no_face: 20000, multiple_faces: 20000, head_turned_away: 25000, unusual_noise: 15000,
-    identity_mismatch: 30000, suspicious_object: 15000,
+  // === SPEED: Check much more frequently ===
+  const DETECT_INTERVAL_MS = 100;        // was 400 — now 10 checks/sec
+  const OBJECT_CHECK_INTERVAL_MS = 500;  // was 1000
+  const IDENTITY_CHECK_INTERVAL_MS = 5000; // was 10000
+  const AUDIO_CHECK_INTERVAL_MS = 200;   // was 500
+
+  // === SENSITIVITY: Lower persistence requirements ===
+  const PERSIST_CHECKS_REQUIRED = {
+    no_face: 2,           // was 3 — 200ms to alert
+    multiple_faces: 1,    // was 2 — immediate alert
+    head_turned_away: 2,  // was 4 — 200ms to alert
+    eyes_away: 3,         // NEW — 300ms to alert
+    identity_mismatch: 2, // unchanged
   };
 
-  const HEAD_TURN_OFFSET_RATIO = 0.22;
-  const LOUD_NOISE_RMS_THRESHOLD = 0.28;
-  const LOUD_NOISE_STREAK_REQUIRED = 4;
+  const COOLDOWN_MS = {
+    no_face: 10000,        // was 20000
+    multiple_faces: 10000, // was 20000
+    head_turned_away: 15000, // was 25000
+    eyes_away: 10000,      // NEW
+    unusual_noise: 10000,  // was 15000
+    identity_mismatch: 20000, // was 30000
+    suspicious_object: 10000, // was 15000
+  };
+
+  // === STRICTER head pose thresholds ===
+  const YAW_THRESHOLD_DEG = 15;   // was 28 — much tighter
+  const PITCH_THRESHOLD_DEG = 12; // was 22 — much tighter
+
+  // === NEW: Eye gaze / attention thresholds ===
+  const EYE_GAZE_THRESHOLD = 0.15; // blendshape threshold for "looking away"
+  const EYE_CLOSED_THRESHOLD = 0.6; // for detecting closed/squinted eyes
+
+  const LOUD_NOISE_RMS_THRESHOLD = 0.22; // was 0.28 — more sensitive
+  const LOUD_NOISE_STREAK_REQUIRED = 3;  // was 4
   const FACE_MATCH_DISTANCE_THRESHOLD = 0.55;
   const IDENTITY_MISMATCH_STREAK_REQUIRED = 2;
+  const OBJECT_SCORE_THRESHOLD = 0.40; // was 0.45 — more sensitive
 
-  // TinyFaceDetector at a larger input size + lower confidence threshold.
-  // The original bug wasn't the detector itself — it's fast and reliable —
-  // it was that it ran at inputSize 160 with scoreThreshold 0.5, which is
-  // too small/strict to reliably pick up a second, smaller, or off-center
-  // face. Bumping these fixes multi-face detection without introducing a
-  // heavier model.
-  function detectorOptions() {
-    return new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 });
-  }
-
-  // COCO-SSD class names that are legitimate reasons for concern during an
-  // exam. "laptop"/"tv"/"keyboard"/"mouse" are deliberately excluded since
-  // the student's own exam device would constantly trigger them.
   const SUSPICIOUS_OBJECT_CLASSES = new Set(['cell phone', 'book', 'remote']);
-  const OBJECT_SCORE_THRESHOLD = 0.6;
 
-  let modelsLoaded = false;
-  let objectModel = null;
   let running = false;
   let videoEl = null;
   let onEvent = null;
-  let detectTimer = null;
+
+  let faceLandmarker = null;
+  let objectDetector = null;
+  let faceDetectTimer = null;
+  let objectDetectTimer = null;
   let identityTimer = null;
-  let objectTimer = null;
   let audioTimer = null;
   let audioCtx = null;
   let analyser = null;
   let audioData = null;
   let referenceDescriptor = null;
+  let recognitionModelLoaded = false;
 
-  const consecutive = { no_face: 0, multiple_faces: 0, head_turned_away: 0, identity_mismatch: 0 };
+  const consecutive = {
+    no_face: 0,
+    multiple_faces: 0,
+    head_turned_away: 0,
+    eyes_away: 0,      // NEW
+    identity_mismatch: 0,
+  };
   const lastFired = {};
-
-  async function loadModels() {
-    if (modelsLoaded) return;
-    await faceapi.nets.tinyFaceDetector.loadFromUri(`${MODEL_BASE}/tiny_face_detector`);
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(`${MODEL_BASE}/face_landmark_68_tiny`);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(`${MODEL_BASE}/face_recognition`);
-    modelsLoaded = true;
-    console.log('[AI Proctor] face detection models loaded successfully.');
-  }
-
-  // Object detection model loads independently of the face models — if the
-  // weight files described in scripts/download-coco-ssd-model.js haven't
-  // been downloaded/committed yet, we simply skip object detection rather
-  // than fail the whole proctoring session.
-  async function loadObjectModel() {
-    if (objectModel || typeof cocoSsd === 'undefined') return;
-    try {
-      objectModel = await cocoSsd.load({ modelUrl: `${MODEL_BASE}/coco-ssd/model.json` });
-      console.log('[AI Proctor] object detection model loaded successfully.');
-    } catch (err) {
-      console.warn('[AI Proctor] object detection model unavailable (run scripts/download-coco-ssd-model.js):', err.message);
-      objectModel = null;
-    }
-  }
 
   function canFire(type) {
     const now = Date.now();
@@ -85,36 +81,97 @@
     if (onEvent) onEvent(type, details);
   }
 
-  /**
-   * Heuristic "looking away" check: compares the nose tip's horizontal
-   * position against the midpoint of the jawline, normalized by face width.
-   */
-  function isHeadTurnedAway(landmarks) {
-    const points = landmarks.positions;
-    const jawLeft = points[0];
-    const jawRight = points[16];
-    const noseTip = points[30];
-    const faceWidth = Math.hypot(jawRight.x - jawLeft.x, jawRight.y - jawLeft.y);
-    if (faceWidth < 1) return false;
-    const midX = (jawLeft.x + jawRight.x) / 2;
-    const offset = Math.abs(noseTip.x - midX) / faceWidth;
-    return offset > HEAD_TURN_OFFSET_RATIO;
+  // ---------------- MediaPipe: face count + head-pose + eye-gaze ----------------
+  async function loadMediaPipeModels() {
+    const { FaceLandmarker, ObjectDetector, FilesetResolver } = await import(`${WASM_BASE}/vision_bundle.mjs`);
+    const filesetResolver = await FilesetResolver.forVisionTasks(WASM_BASE);
+
+    faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+      baseOptions: { modelAssetPath: FACE_LANDMARKER_MODEL, delegate: 'GPU' },
+      runningMode: 'VIDEO',
+      numFaces: 5,        // was 3 — detect more faces in frame
+      outputFaceBlendshapes: true,  // was false — ENABLE eye/gaze tracking
+      outputFacialTransformationMatrixes: true,
+      minFaceDetectionConfidence: 0.4, // was 0.5 — more sensitive
+    }).catch(async () => {
+      console.warn('[AI Proctor] GPU delegate failed, falling back to CPU');
+      return await FaceLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: { modelAssetPath: FACE_LANDMARKER_MODEL, delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        numFaces: 5,
+        outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
+        minFaceDetectionConfidence: 0.4,
+      });
+    });
+    console.log('[AI Proctor] MediaPipe face landmarker loaded.');
+
+    try {
+      objectDetector = await ObjectDetector.createFromOptions(filesetResolver, {
+        baseOptions: { modelAssetPath: OBJECT_DETECTOR_MODEL, delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        scoreThreshold: OBJECT_SCORE_THRESHOLD,
+        maxResults: 8, // was 5
+      });
+      console.log('[AI Proctor] MediaPipe object detector loaded.');
+    } catch (err) {
+      console.warn('[AI Proctor] object detector unavailable:', err.message);
+      objectDetector = null;
+    }
   }
 
-  async function detectTick() {
-    if (!running || !videoEl || videoEl.readyState < 2) return;
-    try {
-      const detections = await faceapi
-        .detectAllFaces(videoEl, detectorOptions())
-        .withFaceLandmarks(true);
+  function yawPitchFromMatrix(matrix) {
+    const m = matrix.data;
+    const zx = m[2];
+    const zy = m[6];
+    const zz = m[10];
+    const yaw = Math.atan2(zx, zz) * (180 / Math.PI);
+    const pitch = Math.atan2(-zy, zz) * (180 / Math.PI);
+    return { yaw, pitch };
+  }
 
-      const count = detections.length;
-      console.debug(`[AI Proctor] tick: ${count} face(s) detected`);
+  // NEW: Extract eye gaze direction from blendshapes
+  function getEyeGazeInfo(blendshapes) {
+    if (!blendshapes || !blendshapes.categories) return null;
+    const cats = blendshapes.categories;
+    const getScore = (name) => {
+      const cat = cats.find(c => c.categoryName === name);
+      return cat ? cat.score : 0;
+    };
+
+    // MediaPipe blendshape names for eye gaze
+    const lookLeft = getScore('eyeLookInLeft') + getScore('eyeLookOutRight');
+    const lookRight = getScore('eyeLookInRight') + getScore('eyeLookOutLeft');
+    const lookUp = getScore('eyeLookUpLeft') + getScore('eyeLookUpRight');
+    const lookDown = getScore('eyeLookDownLeft') + getScore('eyeLookDownRight');
+    const eyeBlinkLeft = getScore('eyeBlinkLeft');
+    const eyeBlinkRight = getScore('eyeBlinkRight');
+
+    const maxGaze = Math.max(lookLeft, lookRight, lookUp, lookDown);
+    const eyesClosed = (eyeBlinkLeft + eyeBlinkRight) / 2 > EYE_CLOSED_THRESHOLD;
+
+    return {
+      lookingAway: maxGaze > EYE_GAZE_THRESHOLD,
+      gazeDirection: maxGaze > EYE_GAZE_THRESHOLD
+        ? (lookLeft > lookRight ? 'left' : lookRight > lookLeft ? 'right' : lookUp > lookDown ? 'up' : 'down')
+        : 'center',
+      eyesClosed,
+      maxGaze,
+    };
+  }
+
+  function faceDetectTick() {
+    if (!running || !faceLandmarker || !videoEl || videoEl.readyState < 2) return;
+
+    try {
+      const result = faceLandmarker.detectForVideo(videoEl, performance.now());
+      const count = result.faceLandmarks.length;
 
       if (count === 0) {
         consecutive.no_face += 1;
         consecutive.multiple_faces = 0;
         consecutive.head_turned_away = 0;
+        consecutive.eyes_away = 0;
         if (consecutive.no_face >= PERSIST_CHECKS_REQUIRED.no_face && canFire('no_face')) {
           fire('no_face', { message: 'No face detected in camera frame' });
         }
@@ -122,43 +179,110 @@
         consecutive.multiple_faces += 1;
         consecutive.no_face = 0;
         consecutive.head_turned_away = 0;
+        consecutive.eyes_away = 0;
         if (consecutive.multiple_faces >= PERSIST_CHECKS_REQUIRED.multiple_faces && canFire('multiple_faces')) {
           fire('multiple_faces', { message: `${count} faces detected in camera frame`, count });
         }
       } else {
         consecutive.no_face = 0;
         consecutive.multiple_faces = 0;
-        const landmarks = detections[0].landmarks;
-        if (landmarks && isHeadTurnedAway(landmarks)) {
+
+        // --- Head pose check ---
+        const matrix = result.facialTransformationMatrixes[0];
+        let headTurned = false;
+        let yaw = 0, pitch = 0;
+
+        if (matrix) {
+          ({ yaw, pitch } = yawPitchFromMatrix(matrix));
+          headTurned = Math.abs(yaw) > YAW_THRESHOLD_DEG || Math.abs(pitch) > PITCH_THRESHOLD_DEG;
+        }
+
+        // --- Eye gaze check (NEW) ---
+        const blendshapes = result.faceBlendshapes[0];
+        const gazeInfo = getEyeGazeInfo(blendshapes);
+        const eyesNotFocused = gazeInfo ? (gazeInfo.lookingAway || gazeInfo.eyesClosed) : false;
+
+        if (headTurned) {
           consecutive.head_turned_away += 1;
           if (consecutive.head_turned_away >= PERSIST_CHECKS_REQUIRED.head_turned_away && canFire('head_turned_away')) {
-            fire('head_turned_away', { message: 'Head turned away from screen for an extended period' });
+            fire('head_turned_away', {
+              message: 'Head turned away from screen',
+              yaw: Number(yaw.toFixed(1)),
+              pitch: Number(pitch.toFixed(1)),
+            });
           }
         } else {
           consecutive.head_turned_away = 0;
         }
+
+        if (eyesNotFocused) {
+          consecutive.eyes_away += 1;
+          if (consecutive.eyes_away >= PERSIST_CHECKS_REQUIRED.eyes_away && canFire('eyes_away')) {
+            fire('eyes_away', {
+              message: gazeInfo.eyesClosed ? 'Eyes closed or looking down' : 'Eyes looking away from screen',
+              gazeDirection: gazeInfo.gazeDirection,
+              eyesClosed: gazeInfo.eyesClosed,
+              confidence: Number(gazeInfo.maxGaze.toFixed(3)),
+            });
+          }
+        } else {
+          consecutive.eyes_away = 0;
+        }
       }
     } catch (err) {
-      console.warn('[AI Proctor] detection tick failed:', err.message);
+      console.warn('[AI Proctor] face detection tick failed:', err.message);
     }
   }
 
-  // ---------------- Identity verification ----------------
-  // Compares the live camera feed against the student's own enrollment
-  // (passport) photo using face-api.js's recognition descriptors — a
-  // 128-dimensional vector unique to a person's face geometry. This never
-  // leaves the device: the comparison runs entirely in the browser.
+  function objectDetectTick() {
+    if (!running || !objectDetector || !videoEl || videoEl.readyState < 2) return;
+    try {
+      const result = objectDetector.detectForVideo(videoEl, performance.now());
+      const hits = result.detections.filter((d) => {
+        const top = d.categories[0];
+        return top && SUSPICIOUS_OBJECT_CLASSES.has(top.categoryName) && top.score >= OBJECT_SCORE_THRESHOLD;
+      });
+      // Fire for ALL detections, not just first
+      hits.forEach((hit) => {
+        if (canFire('suspicious_object')) {
+          const top = hit.categories[0];
+          fire('suspicious_object', {
+            message: `A ${top.categoryName} was detected`,
+            object: top.categoryName,
+            confidence: Number(top.score.toFixed(3)),
+          });
+        }
+      });
+    } catch (err) {
+      console.warn('[AI Proctor] object detection tick failed:', err.message);
+    }
+  }
+
+  // ---------------- face-api.js: identity verification ----------------
+  async function loadRecognitionModel() {
+    if (recognitionModelLoaded) return;
+    await faceapi.nets.tinyFaceDetector.loadFromUri(`${MODEL_BASE}/tiny_face_detector`);
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(`${MODEL_BASE}/face_landmark_68_tiny`);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(`${MODEL_BASE}/face_recognition`);
+    recognitionModelLoaded = true;
+    console.log('[AI Proctor] identity verification model loaded.');
+  }
+
+  function identityDetectorOptions() {
+    return new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 });
+  }
+
   async function computeReferenceDescriptor(imageUrl) {
     if (!imageUrl) return null;
     try {
       const img = await faceapi.fetchImage(imageUrl);
       const result = await faceapi
-        .detectSingleFace(img, detectorOptions())
+        .detectSingleFace(img, identityDetectorOptions())
         .withFaceLandmarks(true)
         .withFaceDescriptor();
       return result ? result.descriptor : null;
     } catch (err) {
-      console.warn('[AI Proctor] could not compute reference descriptor from enrollment photo:', err.message);
+      console.warn('[AI Proctor] could not compute reference descriptor:', err.message);
       return null;
     }
   }
@@ -167,16 +291,16 @@
     if (!running || !referenceDescriptor || !videoEl || videoEl.readyState < 2) return;
     try {
       const result = await faceapi
-        .detectSingleFace(videoEl, detectorOptions())
+        .detectSingleFace(videoEl, identityDetectorOptions())
         .withFaceLandmarks(true)
         .withFaceDescriptor();
-      if (!result) return; // no_face is already handled by detectTick — don't double-report here
+      if (!result) return;
       const distance = faceapi.euclideanDistance(referenceDescriptor, result.descriptor);
       if (distance > FACE_MATCH_DISTANCE_THRESHOLD) {
         consecutive.identity_mismatch += 1;
         if (consecutive.identity_mismatch >= IDENTITY_MISMATCH_STREAK_REQUIRED && canFire('identity_mismatch')) {
           fire('identity_mismatch', {
-            message: 'The person on camera does not match the enrollment photo on file',
+            message: 'Person on camera does not match enrollment photo',
             distance: Number(distance.toFixed(3)),
           });
         }
@@ -188,29 +312,10 @@
     }
   }
 
-  // ---------------- Object detection (phones, books, etc.) ----------------
-  async function objectTick() {
-    if (!running || !objectModel || !videoEl || videoEl.readyState < 2) return;
-    try {
-      const predictions = await objectModel.detect(videoEl, 10, OBJECT_SCORE_THRESHOLD);
-      const hit = predictions.find((p) => SUSPICIOUS_OBJECT_CLASSES.has(p.class));
-      if (hit && canFire('suspicious_object')) {
-        fire('suspicious_object', {
-          message: `A ${hit.class} was detected in the camera frame`,
-          object: hit.class,
-          confidence: Number(hit.score.toFixed(3)),
-        });
-      }
-    } catch (err) {
-      console.warn('[AI Proctor] object detection tick failed:', err.message);
-    }
-  }
-
-  // ---------------- Audio: local volume-level monitoring only ----------------
+  // ---------------- Audio monitoring ----------------
   function startAudioMonitoring(stream) {
     const audioTracks = stream.getAudioTracks();
     if (!audioTracks.length) return;
-
     try {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioCtx.createMediaStreamSource(stream);
@@ -222,7 +327,6 @@
       console.warn('[AI Proctor] audio monitoring unavailable:', err.message);
       return;
     }
-
     let loudStreak = 0;
     audioTimer = setInterval(() => {
       if (!analyser) return;
@@ -248,63 +352,66 @@
     if (audioTimer) clearInterval(audioTimer);
     audioTimer = null;
     if (audioCtx) {
-      try { audioCtx.close(); } catch (e) { /* already closed */ }
+      try { audioCtx.close(); } catch (e) { /* ignore */ }
     }
     audioCtx = null;
     analyser = null;
   }
 
-  /**
-   * Starts AI proctoring against a live <video> element already showing the
-   * student's camera feed.
-   *  - `stream` should include the audio track (if available) for noise
-   *    monitoring — video-only streams simply skip that part.
-   *  - `referencePhotoUrl` (optional) is the student's enrollment/passport
-   *    photo. If provided, a reference face descriptor is computed once at
-   *    start-up and the live feed is periodically checked against it to
-   *    catch a different person sitting the exam.
-   * Returns true if face monitoring started, false if the models failed to
-   * load — the exam should continue normally either way, just without AI
-   * signals. Object detection and identity verification degrade
-   * independently and never block the exam.
-   */
   async function start({ videoElement, stream, referencePhotoUrl, onEvent: cb }) {
     videoEl = videoElement;
     onEvent = cb;
     running = true;
+
     try {
-      await loadModels();
+      await loadMediaPipeModels();
     } catch (err) {
-      console.warn('[AI Proctor] models failed to load — continuing without AI monitoring:', err.message);
+      console.error('[AI Proctor] FATAL: MediaPipe models failed to load:', err.message);
       running = false;
       return false;
     }
-    detectTimer = setInterval(detectTick, DETECT_INTERVAL_MS);
+
+    if (faceLandmarker) faceDetectTimer = setInterval(faceDetectTick, DETECT_INTERVAL_MS);
+    if (objectDetector) objectDetectTimer = setInterval(objectDetectTick, OBJECT_CHECK_INTERVAL_MS);
+
     if (stream) startAudioMonitoring(stream);
 
     if (referencePhotoUrl) {
-      computeReferenceDescriptor(referencePhotoUrl).then((descriptor) => {
-        referenceDescriptor = descriptor;
-        if (descriptor && running) identityTimer = setInterval(identityTick, IDENTITY_CHECK_INTERVAL_MS);
-      });
+      loadRecognitionModel()
+        .then(() => computeReferenceDescriptor(referencePhotoUrl))
+        .then((descriptor) => {
+          referenceDescriptor = descriptor;
+          if (descriptor && running) identityTimer = setInterval(identityTick, IDENTITY_CHECK_INTERVAL_MS);
+        })
+        .catch((err) => console.warn('[AI Proctor] identity verification unavailable:', err.message));
     }
-
-    loadObjectModel().then(() => {
-      if (objectModel && running) objectTimer = setInterval(objectTick, OBJECT_CHECK_INTERVAL_MS);
-    });
 
     return true;
   }
 
   function stop() {
     running = false;
-    if (detectTimer) clearInterval(detectTimer);
+    if (faceDetectTimer) clearInterval(faceDetectTimer);
+    if (objectDetectTimer) clearInterval(objectDetectTimer);
     if (identityTimer) clearInterval(identityTimer);
-    if (objectTimer) clearInterval(objectTimer);
-    detectTimer = null; identityTimer = null; objectTimer = null;
+    faceDetectTimer = null;
+    objectDetectTimer = null;
+    identityTimer = null;
     referenceDescriptor = null;
+
+    // Reset ALL consecutive counters
+    consecutive.no_face = 0;
+    consecutive.multiple_faces = 0;
+    consecutive.head_turned_away = 0;
+    consecutive.eyes_away = 0;
     consecutive.identity_mismatch = 0;
+
     stopAudioMonitoring();
+    if (faceLandmarker) { try { faceLandmarker.close(); } catch (e) { /* ignore */ } faceLandmarker = null; }
+    if (objectDetector) { try { objectDetector.close(); } catch (e) { /* ignore */ } objectDetector = null; }
+
+    videoEl = null;
+    onEvent = null;
   }
 
   window.EmdmsAIProctor = { start, stop };

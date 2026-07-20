@@ -1,6 +1,7 @@
 const { app, shell, BrowserWindow, dialog } = require('electron');
 const path = require('path');
 const https = require('https');
+const fs = require('fs');
 
 // Allow loading the local server using a self-signed certificate (localhost only)
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');

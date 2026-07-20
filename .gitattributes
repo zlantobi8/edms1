@@ -1,0 +1,13 @@
+# Model weight files must never go through Git's text/CRLF conversion —
+# that silently corrupts binary files and produces a model that loads
+# without error but detects nothing correctly (a very hard bug to spot).
+*.onnx binary
+*.bin binary
+*.pb binary
+*.task binary
+*.tflite binary
+*.wasm binary
+*-shard1 binary
+*-shard2 binary
+*-shard3 binary
+*-shard4 binary

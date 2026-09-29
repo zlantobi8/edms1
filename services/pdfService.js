@@ -18,6 +18,23 @@ function streamResultsPdf(res, title, results) {
   doc.fontSize(9).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
   doc.moveDown(1);
 
+  // ---- Summary ----
+  doc.fontSize(13).text('Summary', { underline: false });
+  doc.moveDown(0.3);
+  if (results.length) {
+    const total = results.length;
+    const passCount = results.filter((r) => r.passed).length;
+    const avg = results.reduce((sum, r) => sum + Number(r.percentage), 0) / total;
+    const highest = Math.max(...results.map((r) => Number(r.percentage)));
+    const lowest = Math.min(...results.map((r) => Number(r.percentage)));
+    doc.fontSize(10).text(
+      `Candidates: ${total}    Average: ${avg.toFixed(1)}%    Pass Rate: ${passCount}/${total} (${Math.round((passCount / total) * 100)}%)    Highest: ${highest.toFixed(1)}%    Lowest: ${lowest.toFixed(1)}%`
+    );
+  } else {
+    doc.fontSize(10).text('No results recorded for this selection.');
+  }
+  doc.moveDown(1);
+
   const colWidths = [90, 150, 130, 60, 60, 60, 60];
   const headers = ['Reg. Number', 'Full Name', 'Department', 'Score', 'Total', '%', 'Status'];
   let y = doc.y;

@@ -8,7 +8,8 @@
     "dev": "node --watch server.js",
     "electron:dev": "electron .",
     "dist": "electron-builder --windows nsis",
-    "postinstall": "node scripts/copy-face-api.js"
+    "postinstall": "node scripts/copy-face-api.js",
+    "seed:academic": "node scripts/seed-academic.js"
   },
   "license": "MIT",
   "author": "EMDMS",

@@ -46,32 +46,35 @@
       { level: 'HND I', code: 'SWD 322', title: 'Database Design 2' },
       { level: 'HND I', code: 'CYS 322', title: 'Mobile Wireless Security' },
       { level: 'HND I', code: 'SWD 323', title: 'Frontend Development 1' },
-      { level: 'HND I', code: 'NCC 321', title: 'Routing and Switching' },
       { level: 'HND I', code: 'SWD 324', title: 'Backend Development 1' },
-      { level: 'HND I', code: 'NCC 322', title: 'Cloud Computing 1' },
       { level: 'HND I', code: 'SWD 328', title: 'Rapid Application Development (CMS)' },
       { level: 'HND I', code: 'SWD 326', title: 'Research Methods in SWD' },
-      { level: 'HND I', code: 'NCC 325', title: 'Advance Wireless Network' },
-      { level: 'HND I', code: 'NCC 323', title: 'Advanced Statistics for Computing' },
       { level: 'HND I', code: 'COM 312', title: 'Database Design' },
-      { level: 'HND II', code: 'NCC 421', title: 'Cloud Computing II' },
       { level: 'HND II', code: 'SWD 421', title: 'Human Computer Interaction' },
       { level: 'HND II', code: 'SWD 422', title: 'Ethical & Professional Practice in SWD' },
-      { level: 'HND II', code: 'NCC 423', title: 'Ethical & Professional Practice' },
       { level: 'HND II', code: 'COM 427', title: 'Computer Hardware System' },
       { level: 'HND II', code: 'SWD 423', title: 'Software Testing & Quality Assurance' },
       { level: 'HND II', code: 'SWD 425', title: 'Security in SWD' },
       { level: 'HND II', code: 'COM 428', title: 'Scientific Programming Language Using Java II' },
-      { level: 'HND II', code: 'NCC 422', title: 'Enterprise Networking, Security & Automation' },
-      { level: 'HND II', code: 'NCC 424', title: 'Internet of Things (IOT)' },
       { level: 'HND II', code: 'COM 423', title: 'Expert System & Machine Learning' },
       { level: 'HND II', code: 'COM 422', title: 'Computer Graphic & Animation' },
+    ],
+    NCC: [
+      { level: 'HND I', code: 'NCC 321', title: 'Routing and Switching' },
+      { level: 'HND I', code: 'NCC 322', title: 'Cloud Computing 1' },
+      { level: 'HND I', code: 'NCC 323', title: 'Advanced Statistics for Computing' },
+      { level: 'HND I', code: 'NCC 325', title: 'Advance Wireless Network' },
+      { level: 'HND II', code: 'NCC 421', title: 'Cloud Computing II' },
+      { level: 'HND II', code: 'NCC 422', title: 'Enterprise Networking, Security & Automation' },
+      { level: 'HND II', code: 'NCC 423', title: 'Ethical & Professional Practice' },
+      { level: 'HND II', code: 'NCC 424', title: 'Internet of Things (IOT)' },
     ],
   };
 
   function catalogForDepartment(department) {
     if (!department) return null;
-    const match = Object.keys(COURSE_CATALOG).find((code) => department.name.toUpperCase().startsWith(code));
+    const name = department.name.toUpperCase();
+    const match = name.startsWith('NCC') || name.startsWith('CS-NCC') ? 'NCC' : (name.startsWith('CS-SWD') || name.startsWith('CS —') || name.startsWith('CS-')) ? 'CS' : null;
     return match ? COURSE_CATALOG[match] : null;
   }
 
@@ -82,7 +85,8 @@
   const FACULTY_CATALOG = ['School of computing and information technology (SCICT)'];
   const DEPARTMENT_CATALOG = {
     'School of computing and information technology (SCICT)': [
-      'CS — Computer Science (Software & Web Development)',
+      'CS-SWD — Computer Science — Software & Web Development',
+      'CS-NCC — Computer Science — Networking & Cloud Computing',
       'FT — Food Technology',
       'GCT — Glass & Ceramics Technology',
       'SA — Statistics',
@@ -92,6 +96,9 @@
   };
   const LEVEL_CATALOG = ['ND I', 'ND II', 'HND I', 'HND II'];
   const SEMESTER_CATALOG = ['First Semester', 'Second Semester'];
+  // A session in this system represents one academic period, so it may have
+  // exactly one semester. Never offer/add a second semester to the same session.
+
   // Session names are academic years (e.g. "2025/2026") — offer a
   // sensible picked-not-typed range around the current year.
   function sessionCatalog() {
@@ -193,355 +200,250 @@
   }
 
   // ================= ACADEMIC STRUCTURE =================
-  // Every form here is pick-from-a-list — nothing is typed. Faculty narrows
-  // the Department list, Department narrows Levels and Courses, Session
-  // narrows Semester — each phase determines what the next phase offers,
-  // and anything already added is removed from its list.
+  // Academic Structure uses one working context. Parent selections are made
+  // once at the top (only when there is more than one possible parent), and
+  // child forms never repeat the same parent selector.
+  const academicContext = { facultyId: '', departmentId: '', sessionId: '' };
+
+  function normalizeLevel(value) {
+    const v = String(value || '').trim().toUpperCase();
+    return ({ 'ND I': 'ND I', 'ND1': 'ND I', 'ND 1': 'ND I', 'ND II': 'ND II', 'ND2': 'ND II', 'ND 2': 'ND II', 'HND I': 'HND I', 'HND1': 'HND I', 'HND 1': 'HND I', 'HND II': 'HND II', 'HND2': 'HND II', 'HND 2': 'HND II' })[v] || value;
+  }
+
   async function renderAcademic() {
     await loadAcademicCache();
+
+    // Keep only valid context IDs.
+    if (academicContext.facultyId && !cache.faculties.some(f => String(f.id) === String(academicContext.facultyId))) academicContext.facultyId = '';
+    if (academicContext.departmentId && !cache.departments.some(d => String(d.id) === String(academicContext.departmentId))) academicContext.departmentId = '';
+    if (academicContext.sessionId && !cache.sessions.some(s => String(s.id) === String(academicContext.sessionId))) academicContext.sessionId = '';
+
+    // Auto-context is only used when there is exactly one possible parent.
+    if (!academicContext.facultyId && cache.faculties.length === 1) academicContext.facultyId = String(cache.faculties[0].id);
+    const facultyDepartments = cache.departments.filter(d => String(d.faculty_id) === String(academicContext.facultyId));
+    if (academicContext.departmentId && !facultyDepartments.some(d => String(d.id) === String(academicContext.departmentId))) academicContext.departmentId = '';
+    if (!academicContext.departmentId && facultyDepartments.length === 1) academicContext.departmentId = String(facultyDepartments[0].id);
+    if (!academicContext.sessionId && cache.sessions.length === 1) academicContext.sessionId = String(cache.sessions[0].id);
+
+    const activeFaculty = cache.faculties.find(f => String(f.id) === String(academicContext.facultyId));
+    const activeDepartment = cache.departments.find(d => String(d.id) === String(academicContext.departmentId));
+    const activeSession = cache.sessions.find(s => String(s.id) === String(academicContext.sessionId));
+
+    const contextSelect = (id, label, list, selected, disabled = false) => {
+      if (list.length <= 1) return `<div class="academic-context-item"><span>${escapeHtml(label)}</span><b>${escapeHtml(list[0]?.name || 'Not set')}</b></div>`;
+      return `<label class="academic-context-item"><span>${escapeHtml(label)}</span><select id="${id}" ${disabled ? 'disabled' : ''}><option value="">Select ${escapeHtml(label.toLowerCase())}</option>${optionsFor(list, 'id', 'name', selected)}</select></label>`;
+    };
+
+    const facultyOptions = FACULTY_CATALOG.filter(v => !cache.faculties.some(f => f.name.toLowerCase() === v.toLowerCase()));
+    const departmentCatalog = activeFaculty ? (DEPARTMENT_CATALOG[activeFaculty.name] || []) : [];
+    const existingDepartments = new Set(facultyDepartments.map(d => d.name.toLowerCase()));
+    const departmentOptions = departmentCatalog.filter(n => !existingDepartments.has(n.toLowerCase()));
+    const sessionOptions = sessionCatalog().filter(v => !cache.sessions.some(s => s.name.toLowerCase() === v.toLowerCase()));
+    const activeLevels = activeDepartment ? cache.classes.filter(c => String(c.department_id) === String(activeDepartment.id)) : [];
+    const activeSessionSemesters = activeSession ? cache.semesters.filter(s => String(s.session_id) === String(activeSession.id)) : [];
+    const semesterOptions = activeSessionSemesters.length ? [] : SEMESTER_CATALOG;
+
+
     content.innerHTML = `
-      <div class="grid-2">
-        <div class="section">
-          <h3>Faculties</h3>
-          <form id="faculty-form" class="toolbar">
-            <select name="name" id="faculty-pick" required style="padding:8px;border:1px solid var(--line);border-radius:6px;flex:1"></select>
-            <button class="btn btn-primary btn-sm">Add</button>
-          </form>
-          <p id="faculty-hint" style="font-size:12px;color:var(--ink-faint);margin:4px 0 0;"></p>
-          <div class="table-wrap"><table><tbody>${cache.faculties.map((f) => rowWithDelete(f.name, `faculty:${f.id}`)).join('') || emptyRow()}</tbody></table></div>
+      <div class="academic-head">
+        <div>
+          <div class="eyebrow">ACADEMIC SETUP</div>
+          <h3>Academic Structure</h3>
+          <p>Choose the working context once. Every section below reuses it automatically.</p>
         </div>
-        <div class="section">
-          <h3>Departments</h3>
-          <form id="dept-form" class="toolbar">
-            <select name="faculty_id" id="dept-faculty-select" required style="padding:8px;border:1px solid var(--line);border-radius:6px;">${optionsForOrPlaceholder(cache.faculties, 'id', 'name', '— add a faculty first —')}</select>
-            <select name="name" id="dept-pick" required style="padding:8px;border:1px solid var(--line);border-radius:6px;flex:1"></select>
-            <button class="btn btn-primary btn-sm">Add</button>
-          </form>
-          <p id="dept-hint" style="font-size:12px;color:var(--ink-faint);margin:4px 0 0;"></p>
-          <div class="table-wrap"><table><tbody>${cache.departments.map((d) => rowWithDelete(`${d.name} <small style="color:var(--ink-faint)">(${escapeHtml(d.faculty_name)})</small>`, `dept:${d.id}`)).join('') || emptyRow()}</tbody></table></div>
-        </div>
+        <div class="academic-flow"><span>Faculty</span><i class="fa-solid fa-chevron-right"></i><span>Department</span><i class="fa-solid fa-chevron-right"></i><span>Level</span><i class="fa-solid fa-chevron-right"></i><span>Course</span></div>
       </div>
-      <div class="grid-2">
-        <div class="section">
-          <h3>Sessions</h3>
-          <form id="session-form" class="toolbar">
-            <select name="name" id="session-pick" required style="padding:8px;border:1px solid var(--line);border-radius:6px;flex:1"></select>
-            <button class="btn btn-primary btn-sm">Add</button>
-          </form>
-          <div class="table-wrap"><table><tbody>${cache.sessions.map((s) => rowWithDelete(`${s.name} ${s.is_active ? '<span class="badge badge-green">Active</span>' : ''}`, `session:${s.id}`)).join('') || emptyRow()}</tbody></table></div>
-        </div>
-        <div class="section">
-          <h3>Semesters</h3>
-          <form id="semester-form" class="toolbar">
-            <select name="session_id" id="semester-session-select" required style="padding:8px;border:1px solid var(--line);border-radius:6px;">${optionsForOrPlaceholder(cache.sessions, 'id', 'name', '— add a session first —')}</select>
-            <select name="name" id="semester-pick" required style="padding:8px;border:1px solid var(--line);border-radius:6px;flex:1"></select>
-            <button class="btn btn-primary btn-sm">Add</button>
-          </form>
-          <p id="semester-hint" style="font-size:12px;color:var(--ink-faint);margin:4px 0 0;"></p>
-          <div class="table-wrap"><table><tbody>${cache.semesters.map((s) => rowWithDelete(`${s.name} ${s.is_active ? '<span class="badge badge-green">Active</span>' : ''}`, `semester:${s.id}`)).join('') || emptyRow()}</tbody></table></div>
-        </div>
+
+      <div class="academic-context-bar">
+        ${contextSelect('active-faculty', 'Faculty', cache.faculties, academicContext.facultyId)}
+        ${contextSelect('active-department', 'Department', facultyDepartments, academicContext.departmentId, !academicContext.facultyId)}
+        ${contextSelect('active-session', 'Session', cache.sessions, academicContext.sessionId)}
       </div>
-      <div class="grid-2">
-        <div class="section">
-          <h3>Levels</h3>
-          <form id="class-form" class="toolbar">
-            <select name="department_id" id="class-dept-select" required style="padding:8px;border:1px solid var(--line);border-radius:6px;">${optionsFor(cache.departments, 'id', 'name')}</select>
-            <select name="name" id="level-pick" required style="padding:8px;border:1px solid var(--line);border-radius:6px;flex:1"></select>
-            <button class="btn btn-primary btn-sm">Add</button>
+
+      <div class="academic-grid">
+        <section class="academic-card">
+          <div class="academic-card-head"><div><span class="step">1</span><div><h3>Faculties</h3><small>Add each faculty once.</small></div></div><span class="count-pill">${cache.faculties.length}</span></div>
+          <form id="faculty-form" class="academic-form">
+            <select name="name" id="faculty-pick" required><option value="">Select faculty to add</option>${facultyOptions.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('')}</select>
+            <button class="btn btn-primary btn-sm" type="submit" disabled><i class="fa-solid fa-plus"></i> Add</button>
           </form>
-          <p id="level-hint" style="font-size:12px;color:var(--ink-faint);margin:4px 0 0;"></p>
-          <div class="table-wrap"><table><tbody>${cache.classes.map((c) => rowWithDelete(`${c.name} <small style="color:var(--ink-faint)">(${escapeHtml(c.department_name)})</small>`, `class:${c.id}`)).join('') || emptyRow()}</tbody></table></div>
-        </div>
-        <div class="section">
-          <h3>Courses</h3>
-          <form id="subject-form" class="toolbar" style="flex-wrap:wrap;">
-            <select name="department_id" id="course-dept-select" required style="padding:8px;border:1px solid var(--line);border-radius:6px;">${optionsFor(cache.departments, 'id', 'name')}</select>
-            <select id="course-level-select" required style="padding:8px;border:1px solid var(--line);border-radius:6px;"></select>
-            <div id="course-picker-slot" style="display:flex;gap:8px;flex:1;flex-wrap:wrap;"></div>
-            <select name="units" style="padding:8px 10px;border:1px solid var(--line);border-radius:6px;width:80px" title="Units">
-              <option value="1">1 unit</option><option value="2" selected>2 units</option>
-              <option value="3">3 units</option><option value="4">4 units</option>
-            </select>
-            <button class="btn btn-primary btn-sm">Add</button>
+          <div class="form-hint">${facultyOptions.length ? 'After adding, it becomes the active faculty automatically.' : 'All configured faculties have already been added.'}</div>
+          <div class="academic-list">${cache.faculties.map(f => rowWithDelete(`${escapeHtml(f.name)} ${String(f.id) === String(academicContext.facultyId) ? '<span class="badge badge-green">Active</span>' : ''}`, `faculty:${f.id}`)).join('') || emptyRow()}</div>
+        </section>
+
+        <section class="academic-card">
+          <div class="academic-card-head"><div><span class="step">2</span><div><h3>Departments</h3><small>Departments belong to the active faculty.</small></div></div><span class="count-pill">${facultyDepartments.length}</span></div>
+          <form id="dept-form" class="academic-form">
+            <select name="name" id="dept-pick" required ${activeFaculty ? '' : 'disabled'}><option value="">${activeFaculty ? 'Select department to add' : 'Add a faculty first'}</option>${departmentOptions.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}</select>
+            <button class="btn btn-primary btn-sm" type="submit" disabled><i class="fa-solid fa-plus"></i> Add</button>
           </form>
-          <p id="course-picker-hint" style="font-size:12px;color:var(--ink-faint);margin:4px 0 0;"></p>
-          <div class="table-wrap"><table><tbody>${cache.subjects.map((s) => rowWithDelete(`${s.code} — ${escapeHtml(s.title)} <small style="color:var(--ink-faint)">(${escapeHtml(s.department_name)})</small>`, `subject:${s.id}`)).join('') || emptyRow()}</tbody></table></div>
-        </div>
+          <div class="form-hint">${activeFaculty ? (departmentOptions.length ? `Active faculty: ${escapeHtml(activeFaculty.name)}.` : 'All configured departments for this faculty have been added.') : 'Add/select a faculty first.'}</div>
+          <div class="academic-list">${facultyDepartments.map(d => rowWithDelete(`${escapeHtml(d.name)} ${String(d.id) === String(academicContext.departmentId) ? '<span class="badge badge-green">Active</span>' : ''}`, `dept:${d.id}`)).join('') || emptyRow()}</div>
+        </section>
+
+        <section class="academic-card">
+          <div class="academic-card-head"><div><span class="step">A</span><div><h3>Sessions</h3><small>Academic years are added once.</small></div></div><span class="count-pill">${cache.sessions.length}</span></div>
+          <form id="session-form" class="academic-form">
+            <select name="name" id="session-pick" required><option value="">Select session to add</option>${sessionOptions.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('')}</select>
+            <button class="btn btn-primary btn-sm" type="submit" disabled><i class="fa-solid fa-plus"></i> Add</button>
+          </form>
+          <div class="form-hint">${sessionOptions.length ? 'The new session becomes the active session automatically.' : 'No more sessions in the configured range are available.'}</div>
+          <div class="academic-list">${cache.sessions.map(s => rowWithDelete(`${escapeHtml(s.name)} ${String(s.id) === String(academicContext.sessionId) ? '<span class="badge badge-green">Active</span>' : ''}`, `session:${s.id}`)).join('') || emptyRow()}</div>
+        </section>
+
+        <section class="academic-card">
+          <div class="academic-card-head"><div><span class="step">B</span><div><h3>Semester</h3><small>Each session can have one semester only.</small></div></div><span class="count-pill">${activeSession ? cache.semesters.filter(s => String(s.session_id) === String(activeSession.id)).length : 0}/1</span></div>
+          <form id="semester-form" class="academic-form">
+            <select name="name" id="semester-pick" required ${activeSession ? '' : 'disabled'}><option value="">${activeSession ? 'Select semester to add' : 'Select a session first'}</option>${semesterOptions.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}</select>
+            <button class="btn btn-primary btn-sm" type="submit" disabled><i class="fa-solid fa-plus"></i> Add</button>
+          </form>
+          <div class="form-hint">${activeSession ? `Active session: ${escapeHtml(activeSession.name)}. ${semesterOptions.length ? 'Choose the one semester for this session.' : 'A semester is already assigned to this session. A second semester cannot be added.'}` : 'Select or add an academic session first.'}</div>
+          <div class="academic-list">${(activeSession ? cache.semesters.filter(s => String(s.session_id) === String(activeSession.id)) : []).map(s => rowWithDelete(`${escapeHtml(s.name)} ${s.is_active ? '<span class="badge badge-green">Active</span>' : ''}`, `semester:${s.id}`)).join('') || emptyRow()}</div>
+        </section>
+
+        <section class="academic-card">
+          <div class="academic-card-head"><div><span class="step">3</span><div><h3>Levels</h3><small>Levels belong to the active department.</small></div></div><span class="count-pill">${activeLevels.length}</span></div>
+          <form id="class-form" class="academic-form">
+            <select name="name" id="level-pick" required ${activeDepartment ? '' : 'disabled'}><option value="">${activeDepartment ? 'Select level to add' : 'Select a department first'}</option>${catalogOptions(LEVEL_CATALOG, activeLevels.map(c => normalizeLevel(c.name)) ) || ''}</select>
+            <button class="btn btn-primary btn-sm" type="submit" disabled><i class="fa-solid fa-plus"></i> Add</button>
+          </form>
+          <div class="form-hint">${activeDepartment ? `Active department: ${escapeHtml(activeDepartment.name)}.` : 'Select or add a department first.'}</div>
+          <div class="academic-list">${activeLevels.map(c => rowWithDelete(escapeHtml(c.name), `class:${c.id}`)).join('') || emptyRow()}</div>
+        </section>
+
+        <section class="academic-card academic-card-wide">
+          <div class="academic-card-head"><div><span class="step">4</span><div><h3>Courses</h3><small>Only the active department and selected level are used.</small></div></div><span class="count-pill">${activeDepartment ? cache.subjects.filter(s => String(s.department_id) === String(activeDepartment.id)).length : 0}</span></div>
+          <form id="subject-form" class="academic-form academic-course-form">
+            <select id="course-level-select" required ${activeLevels.length ? '' : 'disabled'}><option value="">${activeLevels.length ? 'Select level' : 'Add a level first'}</option>${activeLevels.map(c => `<option value="${escapeHtml(normalizeLevel(c.name))}">${escapeHtml(c.name)}</option>`).join('')}</select>
+            <select name="course_pick" id="course-pick" required disabled><option value="">Select course</option></select>
+            <select name="units" id="course-units" required><option value="">Units</option><option value="1">1 unit</option><option value="2">2 units</option><option value="3">3 units</option><option value="4">4 units</option></select>
+            <button class="btn btn-primary btn-sm" type="submit" disabled><i class="fa-solid fa-plus"></i> Add</button>
+          </form>
+          <div id="course-picker-hint" class="form-hint">${activeDepartment ? 'Choose a level to see its courses.' : 'Select a department first.'}</div>
+          <div class="academic-list">${(activeDepartment ? cache.subjects.filter(s => String(s.department_id) === String(activeDepartment.id)) : []).map(s => rowWithDelete(`${escapeHtml(s.code)} — ${escapeHtml(s.title)} <small>${escapeHtml(s.class_name || '')}</small>`, `subject:${s.id}`)).join('') || emptyRow()}</div>
+        </section>
       </div>`;
 
-    // ---- Faculties: pick from the known catalog, minus ones already added ----
-    const facultyPick = document.getElementById('faculty-pick');
-    const facultyHint = document.getElementById('faculty-hint');
-    function renderFacultyPick() {
-      const opts = catalogOptions(FACULTY_CATALOG, cache.faculties.map((f) => f.name));
-      const form = document.getElementById('faculty-form');
-      if (opts) {
-        facultyPick.innerHTML = opts;
-        facultyHint.textContent = '';
-        form.querySelector('button').disabled = false;
-      } else {
-        facultyPick.innerHTML = '<option value="">— none left to add —</option>';
-        facultyHint.textContent = 'All known faculties have already been added.';
-        form.querySelector('button').disabled = true;
+    const $ = id => document.getElementById(id);
+    const enableWhenSelected = (formId, selectId) => {
+      const form = $(formId), select = $(selectId);
+      if (!form || !select) return;
+      const button = form.querySelector('button[type="submit"]');
+      const update = () => { if (button) button.disabled = !select.value; };
+      select.addEventListener('change', update); update();
+    };
+
+    // Parent context changes happen only here. No child form repeats these selections.
+    const activeFacultySelect = $('active-faculty');
+    const activeDepartmentSelect = $('active-department');
+    const activeSessionSelect = $('active-session');
+    if (activeFacultySelect) activeFacultySelect.addEventListener('change', () => { academicContext.facultyId = activeFacultySelect.value; academicContext.departmentId = ''; renderAcademic(); });
+    if (activeDepartmentSelect) activeDepartmentSelect.addEventListener('change', () => { academicContext.departmentId = activeDepartmentSelect.value; renderAcademic(); });
+    if (activeSessionSelect) activeSessionSelect.addEventListener('change', () => { academicContext.sessionId = activeSessionSelect.value; renderAcademic(); });
+
+    enableWhenSelected('faculty-form', 'faculty-pick');
+    enableWhenSelected('dept-form', 'dept-pick');
+    enableWhenSelected('session-form', 'session-pick');
+    enableWhenSelected('semester-form', 'semester-pick');
+    enableWhenSelected('class-form', 'level-pick');
+
+    const courseLevel = $('course-level-select');
+    const coursePick = $('course-pick');
+    const courseUnits = $('course-units');
+    const courseForm = $('subject-form');
+    const courseHint = $('course-picker-hint');
+    function refreshCoursePicker() {
+      if (!coursePick) return;
+      coursePick.innerHTML = '<option value="">Select course</option>';
+      coursePick.disabled = true;
+      if (!activeDepartment || !courseLevel.value) { courseHint.textContent = activeDepartment ? 'Choose a level to see its courses.' : 'Select a department first.'; return; }
+      const catalog = catalogForDepartment(activeDepartment) || [];
+      const existing = new Set(cache.subjects.filter(s => String(s.department_id) === String(activeDepartment.id)).map(s => s.code.toLowerCase()));
+      const remaining = catalog.filter(c => normalizeLevel(c.level) === normalizeLevel(courseLevel.value) && !existing.has(c.code.toLowerCase()));
+      coursePick.innerHTML += remaining.map(c => `<option value="${escapeHtml(c.code)}|${escapeHtml(c.title)}">${escapeHtml(c.code)} — ${escapeHtml(c.title)}</option>`).join('');
+      coursePick.disabled = !remaining.length;
+      courseHint.textContent = remaining.length ? `Showing ${remaining.length} available course${remaining.length === 1 ? '' : 's'} for ${escapeHtml(activeDepartment.name)}.` : `All ${escapeHtml(courseLevel.value)} courses have already been added.`;
+      updateCourseButton();
+    }
+    function updateCourseButton() {
+      const button = courseForm?.querySelector('button[type="submit"]');
+      if (button) button.disabled = !(activeDepartment && courseLevel?.value && coursePick?.value && courseUnits?.value);
+    }
+    courseLevel?.addEventListener('change', refreshCoursePicker);
+    coursePick?.addEventListener('change', updateCourseButton);
+    courseUnits?.addEventListener('change', updateCourseButton);
+
+    async function submitAcademic(form, endpoint, payload, successText, afterCreate) {
+      if (form.dataset.submitting === '1') return;
+      const button = form.querySelector('button[type="submit"]');
+      form.dataset.submitting = '1';
+      if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…'; }
+      try {
+        const res = await EmdmsApi.post(endpoint, payload());
+        if (afterCreate) await afterCreate(res);
+        toast(successText);
+        await renderAcademic();
+      } catch (err) {
+        toast(err.message || 'Could not save.', 'danger');
+        form.dataset.submitting = '0';
+        if (button) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-plus"></i> Add'; }
       }
     }
-    renderFacultyPick();
 
-    // ---- Departments: cascade from the selected faculty ----
-    const deptFacultySelect = document.getElementById('dept-faculty-select');
-    const deptPick = document.getElementById('dept-pick');
-    const deptHint = document.getElementById('dept-hint');
-    function renderDeptPick() {
-      if (!cache.faculties.length) {
-        deptFacultySelect.disabled = true;
-        deptPick.disabled = true;
-        deptPick.innerHTML = '<option value="">— add a faculty first —</option>';
-        deptHint.textContent = 'Add a Faculty above before adding departments.';
-        document.getElementById('dept-form').querySelector('button').disabled = true;
+    $('faculty-form')?.addEventListener('submit', e => { e.preventDefault(); const f = e.currentTarget; submitAcademic(f, '/api/academic/faculties', () => ({ name: $('faculty-pick').value }), 'Faculty added.', async () => { await loadAcademicCache(); const x = cache.faculties.find(v => v.name.toLowerCase() === $('faculty-pick').value.toLowerCase()); if (x) academicContext.facultyId = String(x.id); }); });
+    $('dept-form')?.addEventListener('submit', e => { e.preventDefault(); const f = e.currentTarget; submitAcademic(f, '/api/academic/departments', () => ({ faculty_id: academicContext.facultyId, name: $('dept-pick').value }), 'Department added.', async () => { await loadAcademicCache(); const x = cache.departments.find(v => String(v.faculty_id) === String(academicContext.facultyId) && v.name.toLowerCase() === $('dept-pick').value.toLowerCase()); if (x) academicContext.departmentId = String(x.id); }); });
+    $('session-form')?.addEventListener('submit', e => { e.preventDefault(); const f = e.currentTarget; submitAcademic(f, '/api/academic/sessions', () => ({ name: $('session-pick').value }), 'Session added.', async () => { await loadAcademicCache(); const x = cache.sessions.find(v => v.name.toLowerCase() === $('session-pick').value.toLowerCase()); if (x) academicContext.sessionId = String(x.id); }); });
+    $('semester-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = e.currentTarget;
+      const sessionId = academicContext.sessionId;
+      if (!sessionId) return toast('Select a session first.', 'error');
+      const alreadyAssigned = cache.semesters.some(v => String(v.session_id) === String(sessionId));
+      if (alreadyAssigned) {
+        toast('This session already has a semester. A session cannot have two semesters.', 'error');
         return;
       }
-      deptFacultySelect.disabled = false;
-      deptPick.disabled = false;
-      const faculty = cache.faculties.find((f) => String(f.id) === String(deptFacultySelect.value));
-      const catalog = (faculty && DEPARTMENT_CATALOG[faculty.name]) || [];
-      const existing = cache.departments.filter((d) => String(d.faculty_id) === String(deptFacultySelect.value)).map((d) => d.name);
-      const opts = catalogOptions(catalog, existing);
-      const form = document.getElementById('dept-form');
-      if (opts) {
-        deptPick.innerHTML = opts;
-        deptHint.textContent = '';
-        form.querySelector('button').disabled = false;
-      } else {
-        deptPick.innerHTML = '<option value="">— none left to add —</option>';
-        deptHint.textContent = catalog.length ? 'All known departments for this faculty have already been added.' : 'No known department list for this faculty yet.';
-        form.querySelector('button').disabled = true;
-      }
-    }
-    deptFacultySelect.addEventListener('change', renderDeptPick);
-    renderDeptPick();
-
-    // ---- Sessions: pick an academic year, minus ones already added ----
-    const sessionPick = document.getElementById('session-pick');
-    function renderSessionPick() {
-      const opts = catalogOptions(sessionCatalog(), cache.sessions.map((s) => s.name));
-      const form = document.getElementById('session-form');
-      if (opts) { sessionPick.innerHTML = opts; form.querySelector('button').disabled = false; }
-      else { sessionPick.innerHTML = '<option value="">— none left to add —</option>'; form.querySelector('button').disabled = true; }
-    }
-    renderSessionPick();
-
-    // ---- Semesters: cascade from the selected session ----
-    const semesterSessionSelect = document.getElementById('semester-session-select');
-    const semesterPick = document.getElementById('semester-pick');
-    const semesterHint = document.getElementById('semester-hint');
-    function renderSemesterPick() {
-      if (!cache.sessions.length) {
-        semesterSessionSelect.disabled = true;
-        semesterPick.disabled = true;
-        semesterPick.innerHTML = '<option value="">— add a session first —</option>';
-        semesterHint.textContent = 'Add a Session above before adding semesters.';
-        document.getElementById('semester-form').querySelector('button').disabled = true;
-        return;
-      }
-      semesterSessionSelect.disabled = false;
-      semesterPick.disabled = false;
-      const existing = cache.semesters.filter((s) => String(s.session_id) === String(semesterSessionSelect.value)).map((s) => s.name);
-      const opts = catalogOptions(SEMESTER_CATALOG, existing);
-      const form = document.getElementById('semester-form');
-      if (opts) {
-        semesterPick.innerHTML = opts;
-        semesterHint.textContent = '';
-        form.querySelector('button').disabled = false;
-      } else {
-        semesterPick.innerHTML = '<option value="">— none left to add —</option>';
-        semesterHint.textContent = 'Both semesters have already been added for this session.';
-        form.querySelector('button').disabled = true;
-      }
-    }
-    semesterSessionSelect.addEventListener('change', renderSemesterPick);
-    renderSemesterPick();
-
-    // ---- Levels: cascade from the selected department ----
-    const classDeptSelect = document.getElementById('class-dept-select');
-    const levelPick = document.getElementById('level-pick');
-    const levelHint = document.getElementById('level-hint');
-    function renderLevelPick() {
-      if (!cache.departments.length) {
-        classDeptSelect.disabled = true;
-        levelPick.disabled = true;
-        levelPick.innerHTML = '<option value="">— add a department first —</option>';
-        levelHint.textContent = 'Add a Department above before adding levels.';
-        document.getElementById('class-form').querySelector('button').disabled = true;
-        return;
-      }
-      classDeptSelect.disabled = false;
-      levelPick.disabled = false;
-      const existing = cache.classes.filter((c) => String(c.department_id) === String(classDeptSelect.value)).map((c) => c.name);
-      const opts = catalogOptions(LEVEL_CATALOG, existing);
-      const form = document.getElementById('class-form');
-      if (opts) {
-        levelPick.innerHTML = opts;
-        levelHint.textContent = '';
-        form.querySelector('button').disabled = false;
-      } else {
-        levelPick.innerHTML = '<option value="">— none left to add —</option>';
-        levelHint.textContent = 'All four levels have already been added for this department.';
-        form.querySelector('button').disabled = true;
-      }
-    }
-    classDeptSelect.addEventListener('change', renderLevelPick);
-    renderLevelPick();
-
-    bindAcademicForm('faculty-form', '/api/academic/faculties', (fd) => ({ name: fd.get('name') }));
-    bindAcademicForm('dept-form', '/api/academic/departments', (fd) => ({ faculty_id: fd.get('faculty_id'), name: fd.get('name') }));
-    bindAcademicForm('session-form', '/api/academic/sessions', (fd) => ({ name: fd.get('name') }));
-    bindAcademicForm('semester-form', '/api/academic/semesters', (fd) => ({ session_id: fd.get('session_id'), name: fd.get('name') }));
-    bindAcademicForm('class-form', '/api/academic/classes', (fd) => ({ department_id: fd.get('department_id'), name: fd.get('name') }));
-
-    // ---- Courses: three-tier cascade — Department, then Level (only the
-    // levels actually added for that department), then Course (only that
-    // department's catalog entries for that exact level, minus courses
-    // already added). Each stage locks the ones after it until it's set.
-    const deptSelect = document.getElementById('course-dept-select');
-    const levelSelect = document.getElementById('course-level-select');
-    const pickerSlot = document.getElementById('course-picker-slot');
-    const pickerHint = document.getElementById('course-picker-hint');
-    const courseForm = document.getElementById('subject-form');
-
-    function lockCoursePicker(message) {
-      pickerSlot.innerHTML = '<select disabled style="padding:8px;border:1px solid var(--line);border-radius:6px;flex:1;min-width:240px;"><option>— none left to add —</option></select>';
-      pickerHint.textContent = message;
-      courseForm.querySelector('button').disabled = true;
-    }
-
-    function renderCoursePicker() {
-      const dept = cache.departments.find((d) => String(d.id) === String(deptSelect.value));
-      const chosenLevel = levelSelect.value;
-      if (!chosenLevel) { lockCoursePicker('Pick a Level first.'); return; }
-      const catalog = catalogForDepartment(dept);
-      const existingCodes = new Set(cache.subjects.filter((s) => String(s.department_id) === String(deptSelect.value)).map((s) => s.code.toLowerCase()));
-      const remaining = (catalog || []).filter((c) => c.level === chosenLevel && !existingCodes.has(c.code.toLowerCase()));
-      if (remaining.length) {
-        pickerSlot.innerHTML = `<select name="course_pick" required style="padding:8px;border:1px solid var(--line);border-radius:6px;flex:1;min-width:240px;">${remaining.map((c) => `<option value="${escapeHtml(c.code)}|${escapeHtml(c.title)}">${escapeHtml(c.code)} — ${escapeHtml(c.title)}</option>`).join('')}</select>`;
-        pickerHint.textContent = `Showing ${chosenLevel} courses for ${dept.name.split('—')[0].trim()} — pick one instead of typing it.`;
-        courseForm.querySelector('button').disabled = false;
-      } else {
-        lockCoursePicker(catalog ? `All ${chosenLevel} courses for this department have already been added.` : 'No saved course list for this department yet.');
-      }
-    }
-
-    function renderCourseLevels() {
-      const levelsForDept = cache.classes.filter((c) => String(c.department_id) === String(deptSelect.value));
-      if (!levelsForDept.length) {
-        levelSelect.disabled = true;
-        levelSelect.innerHTML = '<option value="">— add a level first —</option>';
-        lockCoursePicker('Add a Level for this department above before adding courses.');
-        return;
-      }
-      levelSelect.disabled = false;
-      levelSelect.innerHTML = levelsForDept.map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
-      renderCoursePicker();
-    }
-
-    function renderCourseCascade() {
-      if (!cache.departments.length) {
-        deptSelect.disabled = true;
-        levelSelect.disabled = true;
-        levelSelect.innerHTML = '<option value="">—</option>';
-        lockCoursePicker('Add a Department above before adding courses.');
-        return;
-      }
-      deptSelect.disabled = false;
-      renderCourseLevels();
-    }
-    deptSelect.addEventListener('change', renderCourseLevels);
-    levelSelect.addEventListener('change', renderCoursePicker);
-    renderCourseCascade();
-
-    bindAcademicForm('subject-form', '/api/academic/subjects', (fd) => {
-      const pick = fd.get('course_pick') || '';
-      const [code, title] = pick.split('|');
-      return { department_id: fd.get('department_id'), code, title, units: fd.get('units') };
+      submitAcademic(f, '/api/academic/semesters', () => ({ session_id: sessionId, name: $('semester-pick').value }), 'Semester added.');
     });
+    $('class-form')?.addEventListener('submit', e => { e.preventDefault(); const f = e.currentTarget; submitAcademic(f, '/api/academic/classes', () => ({ department_id: academicContext.departmentId, name: $('level-pick').value }), 'Level added.'); });
+    $('subject-form')?.addEventListener('submit', e => { e.preventDefault(); const f = e.currentTarget; const parts = String(coursePick.value || '').split('|'); submitAcademic(f, '/api/academic/subjects', () => ({ department_id: academicContext.departmentId, code: parts[0] || '', title: parts.slice(1).join('|') || '', units: courseUnits.value }), 'Course added.'); });
 
-    qsa('[data-delete]').forEach((btn) => btn.addEventListener('click', async () => {
-      const [type, id] = btn.dataset.delete.split(':');
-      const endpoints = { faculty: 'faculties', dept: 'departments', session: 'sessions', semester: 'semesters', class: 'classes', subject: 'subjects' };
-      const labels = { faculty: 'faculty', dept: 'department', session: 'session', semester: 'semester', class: 'level', subject: 'course' };
-
-      // Deleting any of these cascades through examinations to their
-      // questions, submissions, answers, results, incidents and
-      // recordings at the database level — so before confirming, check
-      // how many examinations actually depend on what's about to go and
-      // say so plainly, instead of a blind "this cannot be undone".
-      let warning = `Delete this ${labels[type]}? This cannot be undone.`;
-      try {
-        const { data: exams } = await EmdmsApi.get('/api/exams');
-        let examCount = 0;
-        let extra = '';
-        if (type === 'class') examCount = exams.filter((e) => String(e.class_id) === String(id)).length;
-        else if (type === 'subject') examCount = exams.filter((e) => String(e.subject_id) === String(id)).length;
-        else if (type === 'session') examCount = exams.filter((e) => String(e.session_id) === String(id)).length;
-        else if (type === 'semester') examCount = exams.filter((e) => String(e.semester_id) === String(id)).length;
-        else if (type === 'dept') {
-          const classIds = new Set(cache.classes.filter((c) => String(c.department_id) === String(id)).map((c) => String(c.id)));
-          const subjectIds = new Set(cache.subjects.filter((s) => String(s.department_id) === String(id)).map((s) => String(s.id)));
-          examCount = exams.filter((e) => classIds.has(String(e.class_id)) || subjectIds.has(String(e.subject_id))).length;
-          extra = ` It has ${classIds.size} level(s) and ${subjectIds.size} course(s) under it, which will also be deleted.`;
-        } else if (type === 'faculty') {
-          const deptIds = new Set(cache.departments.filter((d) => String(d.faculty_id) === String(id)).map((d) => String(d.id)));
-          const classIds = new Set(cache.classes.filter((c) => deptIds.has(String(c.department_id))).map((c) => String(c.id)));
-          const subjectIds = new Set(cache.subjects.filter((s) => deptIds.has(String(s.department_id))).map((s) => String(s.id)));
-          examCount = exams.filter((e) => classIds.has(String(e.class_id)) || subjectIds.has(String(e.subject_id))).length;
-          extra = ` It has ${deptIds.size} department(s) under it, which will also be deleted.`;
+    // Bind this once to the persistent #content element. Rebinding on every
+    // render caused stale handlers and made delete feel unreliable.
+    if (!content.dataset.academicDeleteBound) {
+      content.dataset.academicDeleteBound = '1';
+      content.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-delete]');
+        if (!btn || btn.dataset.busy === '1') return;
+        const [type, id] = btn.dataset.delete.split(':');
+        const endpoints = { faculty: 'faculties', dept: 'departments', session: 'sessions', semester: 'semesters', class: 'classes', subject: 'subjects' };
+        const labels = { faculty: 'faculty', dept: 'department', session: 'session', semester: 'semester', class: 'level', subject: 'course' };
+        if (!endpoints[type] || !id) return;
+        const item = type === 'faculty' ? cache.faculties.find(x => String(x.id) === String(id)) : type === 'dept' ? cache.departments.find(x => String(x.id) === String(id)) : type === 'session' ? cache.sessions.find(x => String(x.id) === String(id)) : type === 'semester' ? cache.semesters.find(x => String(x.id) === String(id)) : type === 'class' ? cache.classes.find(x => String(x.id) === String(id)) : cache.subjects.find(x => String(x.id) === String(id));
+        const name = item ? (item.name || `${item.code || ''} ${item.title || ''}`).trim() : '';
+        if (!confirm(`Delete ${labels[type]}${name ? ` “${name}”` : ''}?\n\nIf other records depend on it, the server will refuse the deletion.`)) return;
+        btn.dataset.busy = '1'; btn.disabled = true;
+        try {
+          await EmdmsApi.del(`/api/academic/${endpoints[type]}/${encodeURIComponent(id)}`);
+          if (type === 'faculty' && String(academicContext.facultyId) === String(id)) { academicContext.facultyId = ''; academicContext.departmentId = ''; }
+          if (type === 'dept' && String(academicContext.departmentId) === String(id)) academicContext.departmentId = '';
+          if (type === 'session' && String(academicContext.sessionId) === String(id)) academicContext.sessionId = '';
+          toast(`${labels[type][0].toUpperCase()}${labels[type].slice(1)} deleted.`);
+          await renderAcademic();
+        } catch (err) {
+          toast(err.message || 'Delete failed.', 'danger');
+          btn.dataset.busy = '0'; btn.disabled = false;
         }
-        if (examCount > 0) {
-          warning = `Delete this ${labels[type]}?${extra} ${examCount} examination(s) depend on it and will also be permanently deleted — along with their questions, submissions and results. This cannot be undone.`;
-        } else if (extra) {
-          warning = `Delete this ${labels[type]}?${extra} This cannot be undone.`;
-        }
-      } catch (_) {
-        // If the dependency check itself fails, fall back to the plain
-        // warning rather than blocking the delete entirely.
-      }
+      });
+    }
 
-      if (!confirm(warning)) return;
-      try {
-        await EmdmsApi.del(`/api/academic/${endpoints[type]}/${id}`);
-        toast('Deleted.'); renderAcademic();
-      } catch (err) { toast(err.message, 'danger'); }
-    }));
+    refreshCoursePicker();
   }
 
   function rowWithDelete(label, deleteKey) {
-    return `<tr><td>${label}</td><td style="text-align:right;width:70px;"><button class="btn btn-outline btn-sm" data-delete="${deleteKey}">Remove</button></td></tr>`;
+    return `<div class="academic-row"><div class="academic-row-name">${label}</div><button type="button" class="btn btn-outline btn-sm delete-academic" data-delete="${escapeHtml(deleteKey)}"><i class="fa-solid fa-trash-can"></i> Delete</button></div>`;
   }
-  function emptyRow() { return '<tr><td style="color:var(--ink-faint)">None yet.</td></tr>'; }
-
-  function bindAcademicForm(formId, endpoint, extract) {
-    const form = document.getElementById(formId);
-    if (!form) return;
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      // Guard against double-submit: the button stays live (and still
-      // shows the same selection) for the moment it takes the request
-      // and the following re-render to complete, so a second click in
-      // that window must be ignored instead of sending a duplicate Add.
-      if (form.dataset.submitting === '1') return;
-      form.dataset.submitting = '1';
-      const btn = form.querySelector('button');
-      if (btn) btn.disabled = true;
-      const fd = new FormData(form);
-      try {
-        await EmdmsApi.post(endpoint, extract(fd));
-        toast('Added.'); renderAcademic();
-      } catch (err) {
-        toast(err.message, 'danger');
-        form.dataset.submitting = '0';
-        if (btn) btn.disabled = false;
-      }
-    });
-  }
+  function emptyRow() { return '<div class="academic-empty"><i class="fa-regular fa-folder-open"></i><span>Nothing added yet.</span></div>'; }
 
   // ================= STUDENTS =================
   async function renderStudents() {
